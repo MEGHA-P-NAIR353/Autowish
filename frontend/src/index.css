@@ -1,0 +1,316 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* AutoWish AI - Exact UI match from mockup - Dark Theme */
+:root {
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-card: #1E293B;
+  --bg-input: #1E293B;
+  --border: #334155;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --accent-blue: #3B82F6;
+  --accent-purple: #8B5CF6;
+  --accent-green: #10B981;
+  --accent-orange: #F59E0B;
+  --accent-red: #EF4444;
+  --card-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body {
+  font-family: 'Inter', 'Noto Sans', 'Noto Sans Malayalam', 'Noto Sans Tamil', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #0F172A;
+  color: #F1F5F9;
+  margin: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-break: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── ContactSelector portal dropdown animation ─────────────────────────── */
+@keyframes cs-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+/* When placement is 'top' the portal adds translateY(-100%) via inline style;
+   we still want the same fade-in feel, so we override just the keyframe start. */
+@keyframes cs-dropdown-in-up {
+  from { opacity: 0; transform: translateY(calc(-100% + 4px)) scale(0.98); }
+  to   { opacity: 1; transform: translateY(-100%)              scale(1);    }
+}
+
+.glass {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+/* Card Styles - Pixel perfect */
+.card {
+  background-color: #1E293B;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+/* Buttons - Gradient + Exact */
+.btn-primary {
+  background: linear-gradient(135deg, #3B82F6, #2563EB);
+  color: white;
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px -3px rgb(59 130 246 / 0.4);
+}
+
+.btn-secondary {
+  background-color: #334155;
+  color: #E2E8F0;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  border: 1px solid #475569;
+}
+
+.btn-secondary:hover {
+  background-color: #475569;
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, #8B5CF6, #6366F1);
+  color: white;
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost {
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: #94A3B8;
+  transition: all 0.2s;
+}
+
+.btn-ghost:hover {
+  background-color: #334155;
+  color: #F1F5F9;
+}
+
+/* Form Inputs */
+.input {
+  background-color: #1E293B;
+  border: 1px solid #475569;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: #F1F5F9;
+  font-size: 14px;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input::placeholder {
+  color: #64748B;
+}
+
+/* Sidebar */
+.sidebar {
+  background-color: #1E293B;
+  border-right: 1px solid #334155;
+}
+
+/* Top Nav */
+.top-nav {
+  background-color: #1E293B;
+  border-bottom: 1px solid #334155;
+}
+
+/* Stats Cards */
+.stat-card {
+  background-color: #1E293B;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Calendar styling */
+.fc {
+  background: #1E293B;
+  border-radius: 16px;
+  color: #F1F5F9;
+}
+
+.fc .fc-toolbar-title {
+  color: #F1F5F9 !important;
+}
+
+.fc .fc-button {
+  background: #334155;
+  border: 1px solid #475569;
+  color: #E2E8F0;
+  border-radius: 8px;
+}
+
+.fc .fc-button-active {
+  background: #3B82F6;
+  border-color: #3B82F6;
+}
+
+/* Table */
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table th {
+  background-color: #0F172A;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table td {
+  padding: 14px 16px;
+  border-top: 1px solid #334155;
+  font-size: 14px;
+}
+
+/* Modal */
+.modal {
+  animation: modalPop 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Toast */
+.toast {
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* AI Preview */
+.preview-box {
+  background: #0F172A;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+/* Event Cards */
+.event-card {
+  background: #1E293B;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.event-card:hover {
+  border-color: #475569;
+  transform: translateY(-2px);
+}
+
+/* Mobile screens */
+.mobile-frame {
+  border: 12px solid #1E293B;
+  border-radius: 44px;
+  background: #0F172A;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4);
+}
+
+/* Tab styles */
+.tab {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 9999px;
+  transition: all 0.2s;
+}
+
+.tab-active {
+  background-color: #3B82F6;
+  color: white;
+}
+
+/* Badge */
+.badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+/* Dropdown */
+.dropdown {
+  background: #1E293B;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1E293B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
