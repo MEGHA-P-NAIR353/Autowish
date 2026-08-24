@@ -35,6 +35,9 @@ from openai import (
 
 from .response_cleaner import clean_ai_response, contains_template_text
 
+# Alias for backward compatibility with legacy tests
+clean_response = clean_ai_response
+
 logger = logging.getLogger(__name__)
 
 # Reusable client singleton instance
@@ -117,15 +120,34 @@ def masked_key() -> str:
 
 
 def startup_validate() -> None:
-    """Validate startup config without raising exceptions."""
+    """Validate startup config for all AI providers without making network calls or leaking secrets."""
+    # 1. Gemini
+    gemini_key = getattr(settings, "GEMINI_API_KEY", "") or ""
+    gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
+    if gemini_key:
+        masked = f"****{gemini_key[-4:]}" if len(gemini_key) >= 4 else "****"
+        print(f"[STARTUP] Gemini configured: key={masked}, model={gemini_model} (PRIMARY - OK)")
+    else:
+        print("[STARTUP NOTICE] GEMINI_API_KEY is not configured.")
+
+    # 2. Groq
+    groq_key = getattr(settings, "GROQ_API_KEY", "") or ""
+    groq_model = getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant")
+    if groq_key:
+        masked = f"****{groq_key[-4:]}" if len(groq_key) >= 4 else "****"
+        print(f"[STARTUP] Groq configured: key={masked}, model={groq_model} (FALLBACK 1 - OK)")
+    else:
+        print("[STARTUP NOTICE] GROQ_API_KEY is not configured.")
+
+    # 3. OpenRouter
     key = get_api_key()
     primary_model = get_configured_model()
     base_url = getattr(settings, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
     if not key:
-        print("[STARTUP WARNING] OPENROUTER_API_KEY is not configured.")
+        print("[STARTUP NOTICE] OPENROUTER_API_KEY is not configured.")
     else:
-        print(f"[STARTUP] OpenRouter configured: key={masked_key()}, primary_model={primary_model}, base_url={base_url} (OK)")
+        print(f"[STARTUP] OpenRouter configured: key={masked_key()}, primary_model={primary_model}, base_url={base_url} (FALLBACK 2 - OK)")
 
 
 class OpenRouterService:
@@ -314,37 +336,34 @@ def generate_text(
     top_p: float = 0.95,
     max_tokens: int = 600,
     max_retries: int = 3,
+    user_id: Optional[int] = None,
 ) -> str:
     """
-    Generate text using OpenRouter with model fallbacks, retries, and sanitization.
-
-    STATELESS: Every call sends exactly [system, user] messages.
-    No history. No continuation. No assistant echoes.
-
-    On finish_reason == 'length': retries the SAME stateless request with
-    increased token budget (max_tokens * 1.5) — never appends history.
-
-    Args:
-        prompt: User greeting prompt.
-        system_prompt: System instructions.
-        recipient_name: Optional recipient name for validation.
-        temperature: Sampling temperature.
-        top_p: Nucleus sampling.
-        max_tokens: Max completion tokens (default 600).
-        max_retries: Retries per model.
-
-    Returns:
-        Cleaned, complete greeting string.
-
-    Raises:
-        ValueError: If API key is not configured or authentication fails.
-        AIValidationError: If all models and retries fail quality validation.
-        RuntimeError: If all models and retries fail with API errors.
+    Generate text using Multi-Provider AI architecture (Gemini -> Groq -> OpenRouter).
+    Preserves backward compatibility with existing callers.
     """
+    from .provider_manager import get_provider_manager
+    manager = get_provider_manager()
+    try:
+        res = manager.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            recipient_name=recipient_name,
+            user_id=user_id,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            use_cache=False,
+        )
+        return res["content"]
+    except Exception as e:
+        logger.warning("[PROVIDER MANAGER DELEGATION FAILED] Falling back to direct OpenRouter: %s", e)
+
+    # Fallback to direct OpenRouter if ProviderManager raised an error
     api_key = get_api_key()
     if not api_key:
         logger.error("[OPENROUTER ERROR] OPENROUTER_API_KEY is not set.")
-        raise ValueError("OpenRouter API key not configured. Set OPENROUTER_API_KEY in .env.")
+        raise ValueError("AI service is not configured. Set GEMINI_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY in .env.")
 
     client = get_openrouter_client()
     models_to_try = get_fallback_models()

@@ -144,6 +144,23 @@ export const DataProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
+  //
+
+  const fetchRecentActivity = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setActivitiesLoading(true);
+    setActivitiesError(null);
+    try {
+      const res = await dashboardAPI.getRecentActivity({ limit: 10 });
+      setRecentActivities(res.data.results ?? []);
+    } catch (err) {
+      console.warn('fetchRecentActivity error:', err.message);
+      setActivitiesError(err.message || 'Failed to load recent activity');
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, [isAuthenticated]);
+
   // ── Refetch greeting analytics only (used after sending) ────────────────
   const refetchGreetingAnalytics = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -370,20 +387,7 @@ export const DataProvider = ({ children }) => {
 
   const unreadNotificationCount = notifications.filter((n) => !n.is_read).length;
 
-  const fetchRecentActivity = useCallback(async () => {
-    if (!isAuthenticated) return;
-    setActivitiesLoading(true);
-    setActivitiesError(null);
-    try {
-      const res = await dashboardAPI.getRecentActivity({ limit: 10 });
-      setRecentActivities(res.data.results ?? []);
-    } catch (err) {
-      console.warn('fetchRecentActivity error:', err.message);
-      setActivitiesError(err.message || 'Failed to load recent activity');
-    } finally {
-      setActivitiesLoading(false);
-    }
-  }, [isAuthenticated]);
+  
 
   const value = {
     // State

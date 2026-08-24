@@ -125,6 +125,8 @@ class AIGenerateRequestSerializer(serializers.Serializer):
     custom_context = serializers.CharField(required=False, allow_blank=True, default='')
     # 'card' = compact greeting card mode (35-60 words), 'standard' = full AI generator mode (80-150 words)
     mode = serializers.ChoiceField(choices=['card', 'standard'], required=False, default='standard')
+    force_regenerate = serializers.BooleanField(required=False, default=False)
+    use_cache = serializers.BooleanField(required=False, default=True)
 
 
 class NotificationSerializer(serializers.ModelSerializer):

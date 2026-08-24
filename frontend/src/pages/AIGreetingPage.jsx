@@ -199,8 +199,7 @@ const AIGreetingPage = () => {
   const interestsArray = interests.split(',').map(i => i.trim()).filter(i => i);
 
   // ── Generate ──────────────────────────────────────────────────────────────
-  const handleGenerate = useCallback(async (e) => {
-    e?.preventDefault();
+  const handleGenerate = useCallback(async (isRegenerate = false) => {
     if (!selectedContact) { toast.error('Please select a contact first.'); return; }
 
     setGenerating(true);
@@ -218,6 +217,8 @@ const AIGreetingPage = () => {
         relationship,
         interests: interestsArray,
         custom_context: customContext,
+        force_regenerate: isRegenerate === true,
+        use_cache: !isRegenerate,
       });
       setGreeting(resp.data.greeting);
       setEditedText(resp.data.greeting);
@@ -322,7 +323,7 @@ const AIGreetingPage = () => {
 
   // ── Regenerate ────────────────────────────────────────────────────────────
   const handleRegenerate = useCallback(() => {
-    handleGenerate();
+    handleGenerate(true);
   }, [handleGenerate]);
 
   // ── Edit / Save ───────────────────────────────────────────────────────────
@@ -366,9 +367,9 @@ const AIGreetingPage = () => {
         <p className="text-slate-400 text-sm ml-12">Generate, personalize and send heartfelt AI-powered greetings</p>
       </div>
 
-      <div className="grid xl:grid-cols-5 gap-6">
+      <div className="grid xl:grid-cols-5 gap-6 min-w-0">
         {/* ── Left: Form Panel ─────────────────────────────────────────── */}
-        <div className="xl:col-span-2 space-y-5">
+        <div className="min-w-0 xl:col-span-2 space-y-5">
           {/* Contact Selection */}
           <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-5 shadow-xl">
             <div className="flex items-center gap-2 mb-4">
@@ -496,7 +497,7 @@ const AIGreetingPage = () => {
             {/* Generate Button */}
             <button
               type="button"
-              onClick={handleGenerate}
+              onClick={() => handleGenerate(false)}
               disabled={generating || !selectedContact}
               className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-600 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
             >
@@ -510,7 +511,7 @@ const AIGreetingPage = () => {
         </div>
 
         {/* ── Right: Preview Panel ──────────────────────────────────────── */}
-        <div className="xl:col-span-3 flex flex-col gap-5">
+        <div className="min-w-0 xl:col-span-3 flex flex-col gap-5">
           <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl shadow-xl flex-1 flex flex-col min-h-[380px]">
             {/* Preview Header */}
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-700/60">
@@ -531,7 +532,7 @@ const AIGreetingPage = () => {
             </div>
 
             {/* Greeting Content Area */}
-            <div className="flex-1 p-5">
+            <div className="flex-1 min-w-0 min-h-0 w-full max-w-full overflow-y-auto p-5">
               {generating ? (
                 <div className="space-y-3">
                   <Skeleton className="h-5 w-3/4" />
@@ -544,12 +545,12 @@ const AIGreetingPage = () => {
                   <textarea
                     value={editedText}
                     onChange={e => setEditedText(e.target.value)}
-                    className="w-full h-full min-h-[200px] bg-transparent text-slate-100 text-base leading-relaxed resize-none outline-none font-medium"
+                    className="w-full max-w-full min-w-0 h-full min-h-[200px] bg-transparent text-slate-100 text-base leading-relaxed resize-none outline-none font-medium"
                     autoFocus
                   />
                 ) : (
-                  <div className="relative group">
-                    <p className="text-slate-100 text-base leading-relaxed font-medium whitespace-pre-wrap">
+                  <div className="relative group w-full max-w-full min-w-0">
+                    <p className="w-full max-w-full min-w-0 text-slate-100 text-base leading-relaxed font-medium whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                       {greeting}
                     </p>
                   </div>

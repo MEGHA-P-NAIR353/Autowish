@@ -15,12 +15,12 @@ class CoreConfig(AppConfig):
         is_prod = not settings.DEBUG
 
         if is_dev_child or is_prod:
-            # ── OpenRouter startup validation ──────────────────────────────────
+            # ── Multi-Provider AI startup validation ───────────────────────────
             try:
                 from services.ai.openrouter_service import startup_validate
                 startup_validate()
             except Exception as e:
-                print(f"[STARTUP ERROR] OpenRouter validation raised an exception: {e}")
+                print(f"[STARTUP ERROR] AI provider validation raised an exception: {e}")
 
             # ── APScheduler ───────────────────────────────────────────────────
             try:

@@ -354,7 +354,7 @@ export default function GreetingTemplates() {
                       background_image: previewingTemplate.background_image_url || undefined,
                       font_family: previewingTemplate.font_family || 'Inter',
                       font_size: previewingTemplate.font_size || 16,
-                      font_color: previewingTemplate.text_color || '#ffffff',
+                      text_color: previewingTemplate.text_color || '#ffffff',
                       elements_json: previewingTemplate.elements_json,
                       status: 'draft',
                       personal_message: 'May your day be filled with warm smiles, loving laughter, and beautiful memories.',

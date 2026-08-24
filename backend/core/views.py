@@ -43,10 +43,16 @@ from .serializers import (
 )
 from .tasks import send_email_task
 from services.activity_service import create_activity
+from services.ai import (
+    generate_ai_wish,
+    build_greeting_prompt,
+    build_system_prompt,
+    LANGUAGE_MAP,
+    AIValidationError,
+)
 from services.ai.openrouter_service import (
     generate_text as openrouter_generate,
     masked_key as openrouter_masked_key,
-    AIValidationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -1048,7 +1054,7 @@ def build_greeting_prompt(recipient_name, occasion, tone, language, relationship
 def generate_ai_greeting(request):
     """
     POST /api/ai/generate/
-    Generate a personalized greeting using OpenRouter AI.
+    Generate a personalized greeting using Multi-Provider AI (Gemini -> Groq -> OpenRouter).
     If contact_id is supplied, auto-populate from Contact fields.
     Saves result to GeneratedGreeting and returns the object.
     """
@@ -1070,6 +1076,8 @@ def generate_ai_greeting(request):
         interests = data.get('interests', [])
         custom_context = data.get('custom_context', '') or ''
         mode = data.get('mode', 'standard') or 'standard'
+        force_regenerate = data.get('force_regenerate', False)
+        use_cache = data.get('use_cache', True) and not force_regenerate
 
         # Resolve contact details
         contact = None
@@ -1092,79 +1100,28 @@ def generate_ai_greeting(request):
             except Contact.DoesNotExist:
                 return Response({'error': 'Contact not found.'}, status=404)
 
-        prompt = build_greeting_prompt(
-            recipient_name=recipient_name,
-            occasion=occasion,
-            tone=tone,
-            language=language,
-            relationship=relationship,
-            age=age,
-            interests=interests,
-            custom_context=custom_context,
-        )
-
-        lang_name = LANGUAGE_MAP.get(language, 'English')
-
-        if mode == 'card':
-            # ── Greeting Card Mode: compact, card-safe message ────────────────────────
-            # Generates a concise greeting card message (3-4 sentences, 35-60 words).
-            # Returns ONLY the final greeting text — no reasoning, counting, or labels.
-            system_prompt = (
-                f"You are an expert, native {lang_name} greeting card writer. "
-                f"Write ONLY in {lang_name}. Never mix languages. "
-                f"Generate a concise, heartfelt greeting card message for {recipient_name} "
-                f"on the occasion of {occasion} in a {tone.lower()} tone.\n"
-                f"LENGTH & STRUCTURE:\n"
-                f"- Write 3 to 4 short sentences (approximately 35 to 60 words total).\n"
-                f"- Include a warm greeting addressing {recipient_name}, an occasion-specific wish, and a complete warm closing sentence.\n"
-                f"STRICT OUTPUT RULES — YOU MUST FOLLOW ALL OF THESE:\n"
-                f"- The final response must contain ONLY the greeting message itself.\n"
-                f"- Do NOT include any template text, placeholder variables, or sentence labels.\n"
-                f"- Do NOT include text like 'Greeting + Name', 'Closing', 'Sentence 1', 'Template', 'Placeholder', 'Prompt', 'Instruction', 'Count', 'Reasoning', 'Analysis'.\n"
-                f"- Do NOT explain your reasoning or show your thoughts.\n"
-                f"- Do not include sentence labels (like 'Sentence 1:').\n"
-                f"- Do not count words or show word counts.\n"
-                f"- Do not mention the prompt or instructions.\n"
-                f"- Do not include markdown, XML, JSON, or HTML formatting.\n"
-                f"- Do not include headers, signatures, or notes.\n"
-                f"- The very first character MUST be the first letter of the greeting.\n"
-                f"- The very last character MUST be a final punctuation mark (. or !).\n"
-                f"- NEVER return template text such as 'Greeting + Name', 'Romantic wish for festival', 'Closing', 'Sentence 1', or any placeholder/variable text.\n"
-                f"- If you would normally output template text, instead generate a complete, personalized greeting."
-            )
-        else:
-            # ── Standard AI Generator Mode: full personalized greeting (80-150 words) ─
-            system_prompt = (
-                f"You are an expert, native {lang_name} greeting message writer. "
-                f"Write a complete, highly personalized, warm {tone.lower()} greeting for {recipient_name} "
-                f"on the occasion of {occasion}. "
-                f"Write ONLY in {lang_name}. Never mix English with non-English languages. "
-                f"Rules you MUST follow:\n"
-                f"- The very first character of your response MUST be the first character of the greeting.\n"
-                f"- The very last character MUST be the final punctuation mark (. ! ? or an emoji).\n"
-                f"- Never include reasoning, thinking, planning, word counts, language titles, "
-                f"headers, quotes, or any meta-text before or after the greeting.\n"
-                f"- Address the recipient directly by name: '{recipient_name}'.\n"
-                f"- Length: 80 to 150 words."
-            )
-
         logger.info(
-            f"[AI_GREETING_REQUEST] recipient={recipient_name}, occasion={occasion}, "
-            f"tone={tone}, language={language}, relationship={relationship}, age={age}, mode={mode}, "
-            f"provider=OpenRouter, auth=API_KEY({openrouter_masked_key()}), prompt_len={len(prompt)}"
+            f"[AI_GREETING_REQUEST] user={request.user.id}, recipient={recipient_name}, "
+            f"occasion={occasion}, tone={tone}, language={language}, mode={mode}, force_regenerate={force_regenerate}"
         )
 
         try:
-            # Card mode uses tighter token budget to enforce concise output
-            _max_tokens = 150 if mode == 'card' else 600
-            greeting_text = openrouter_generate(
-                prompt,
-                system_prompt=system_prompt,
+            ai_result = generate_ai_wish(
                 recipient_name=recipient_name,
-                temperature=0.85 if mode == 'card' else 0.9,
-                top_p=0.92 if mode == 'card' else 0.95,
-                max_tokens=_max_tokens,
+                occasion=occasion,
+                tone=tone,
+                language=language,
+                relationship=relationship,
+                age=age,
+                interests=interests,
+                custom_context=custom_context,
+                mode=mode,
+                user_id=request.user.id,
+                use_cache=use_cache,
             )
+            greeting_text = ai_result.get("content", "")
+            provider_used = ai_result.get("provider", "gemini")
+            is_cached = ai_result.get("cached", False)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         except AIValidationError as e:
@@ -1174,10 +1131,13 @@ def generate_ai_greeting(request):
             )
             return Response(e.to_dict(), status=503)
         except RuntimeError as e:
-            return Response({'error': str(e)}, status=500)
+            logger.error(f"[AI_GREETING_RUNTIME_ERROR] {e}")
+            return Response({
+                'error': 'AI generation is temporarily unavailable. Please try again.'
+            }, status=500)
 
         if not greeting_text:
-            logger.error("OpenRouter returned empty response")
+            logger.error("AI service returned empty response")
             return Response({
                 'error': 'AI service returned an empty response. Please try again.'
             }, status=500)
@@ -1196,7 +1156,7 @@ def generate_ai_greeting(request):
             action_type='AI_GREETING_GENERATED',
             title=f"AI greeting generated for {recipient_name}",
             entity_type='generated_greeting',
-            metadata={'recipient_name': recipient_name, 'occasion': occasion}
+            metadata={'recipient_name': recipient_name, 'occasion': occasion, 'provider': provider_used, 'cached': is_cached}
         )
 
         return Response({
@@ -1210,6 +1170,8 @@ def generate_ai_greeting(request):
             'age': age,
             'interests': interests,
             'custom_context': custom_context,
+            'provider': provider_used,
+            'cached': is_cached,
             'contact': {
                 'id': contact.id,
                 'name': contact.name,
@@ -1221,9 +1183,8 @@ def generate_ai_greeting(request):
     except Exception as e:
         logger.exception("AI Greeting Generation Failed")
         return Response({
-            "error": str(e),
-            "type": type(e).__name__,
-            "trace": traceback.format_exc()
+            "error": "An unexpected error occurred while generating your greeting. Please try again.",
+            "success": False
         }, status=500)
 
 

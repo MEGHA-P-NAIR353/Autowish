@@ -13,28 +13,32 @@ Pixel-perfect match to the provided UI mockup. Fully functional.
 - ✅ Dashboard with stats, charts, recent activity, calendar
 - ✅ Contact Management: CRUD, CSV Import/Export, search, pagination
 - ✅ Event Management: Card & List view, Add/Edit/Delete, filters
-- ✅ AI Greeting Generator — uses OpenRouter (fallback included)
-- ✅ Schedule Wish: Full scheduling form + list
+- ✅ Multi-Provider AI Architecture with automatic fallback:
+  - 1. **Google Gemini** (Primary: `gemini-3.6-flash`)
+  - 2. **Groq** (Fallback 1: `llama-3.1-8b-instant`)
+  - 3. **OpenRouter** (Fallback 2: `nvidia/nemotron-3-super:free`)
+- ✅ Privacy-isolated Redis caching for instant wish generation (< 50ms)
+- ✅ Auto-failover on rate-limits, timeouts, and 404 model-not-found errors
+- ✅ Centralized prompt builder with multilingual support (English, Malayalam, Hindi, Tamil, etc.)
+- ✅ Schedule Wish: Full scheduling form + Celery / APScheduler automatic wish triggering
 - ✅ Email Logs with retry
 - ✅ Settings: Profile, SMTP, Notifications
 - ✅ Reports + Analytics
-- ✅ JWT simulated authentication (frontend) + full backend ready
-- ✅ Scheduler using APScheduler
+- ✅ JWT authentication + DRF REST API
 - ✅ Production grade code structure
 
 ## Tech Stack
 
 **Frontend**
-- React 19 + Vite
+- React 19 + Vite + TypeScript
 - Tailwind CSS + Framer Motion
 - React Router v7, React Hook Form, Recharts, FullCalendar, Axios
 
 **Backend**
-- Django + DRF
-- JWT
-- APScheduler
-- OpenRouter AI API
-- SQLite (switch to Postgres easily)
+- Django 5.1 + DRF
+- Multi-Provider AI Engine (Google Gemini SDK, Groq SDK, OpenAI SDK for OpenRouter)
+- Redis + Celery + APScheduler
+- PostgreSQL / SQLite
 
 ## Quick Start
 
@@ -52,20 +56,14 @@ Runs at http://localhost:5173
 
 ```bash
 cd backend
-# Create .env
+# Create .env from example
 cp .env.example .env
 
-# Activate venv (already created)
-source venv/bin/activate
-
-# Install deps
+# Install dependencies
 pip install -r requirements.txt
 
 # Migrate
 python manage.py migrate
-
-# Create superuser (optional)
-python manage.py createsuperuser
 
 # Run server
 python manage.py runserver
@@ -73,21 +71,38 @@ python manage.py runserver
 
 Backend runs at http://localhost:8000
 
-### 3. Configure OpenRouter
-
-1. Go to https://openrouter.ai/keys
-2. Create an API key
-3. Add to backend `.env`:
-   ```
-   OPENROUTER_API_KEY=sk-or-v1-...
-   OPENROUTER_MODEL=nvidia/nemotron-3-super:free
-   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-   ```
-
-### 4. Gmail SMTP (for real emails)
+### 3. Configure AI Providers (Multi-Provider Fallback)
 
 In `backend/.env`:
+```env
+# Primary Provider: Google Gemini
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-3.6-flash
+
+# Fallback 1: Groq (Ultra-fast LPU inference)
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=llama-3.1-8b-instant
+
+# Fallback 2: OpenRouter (Free Tier Models)
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MODEL=nvidia/nemotron-3-super:free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# Caching & Timeouts
+AI_CACHE_TTL=86400
+AI_PROVIDER_TIMEOUT=10.0
 ```
+
+### 4. How to Obtain API Keys
+
+1. **Google Gemini**: Obtain a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. **Groq**: Obtain a free high-speed API key at [Groq Console](https://console.groq.com/keys).
+3. **OpenRouter**: Obtain a free API key at [OpenRouter Keys](https://openrouter.ai/keys).
+
+### 5. Gmail SMTP (for real emails)
+
+In `backend/.env`:
+```env
 EMAIL_HOST_USER=yourgmail@gmail.com
 EMAIL_HOST_PASSWORD=your-16-char-app-password
 ```

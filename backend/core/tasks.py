@@ -11,7 +11,7 @@ from .models import ScheduledWish, EmailLog, Contact, Event, UserProfile, Genera
 from services.activity_service import create_activity
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-from services.ai.openrouter_service import generate_text as openrouter_generate
+from services.ai import generate_ai_wish
 import datetime
 
 logger = logging.getLogger(__name__)
@@ -293,38 +293,23 @@ def trigger_automated_wish(contact, occasion):
     tone = 'Warm'
     language = contact.user.profile.preferred_language or 'en'
 
-    # Generate greeting via OpenRouter AI service
-    api_key = getattr(settings, 'OPENROUTER_API_KEY', '')
-    if api_key:
-        try:
-            prompt = (
-                f"Recipient Name: {contact.name}\n"
-                f"Occasion: {occasion}\n"
-                f"Tone: {tone}\n"
-                f"Language: {language}\n"
-                f"Relationship: {contact.relationship or 'Friend'}"
-            )
-            system_prompt = (
-                f"You are an expert multilingual greeting message writer. "
-                f"Generate a personalized, warm automated greeting for {contact.name} on the occasion of {occasion}. "
-                f"Write ONLY in the recipient's language. Address by name: '{contact.name}'. "
-                f"Do NOT include thinking, reasoning, markdown titles, or extra text."
-            )
-            message = openrouter_generate(
-                prompt,
-                system_prompt=system_prompt,
-                recipient_name=contact.name,
-                temperature=0.9,
-                top_p=0.95,
-                max_tokens=600,
-            )
-            if not message:
-                logger.warning(f"OpenRouter returned empty response for automated wish for {contact.name}")
-        except Exception as e:
-            logger.error(f"AI auto wish generation failed: {e}")
-            message = None
-    else:
-        logger.warning(f"No OpenRouter API key configured for automated wish for {contact.name}")
+    # Generate greeting via Multi-Provider AI service (Gemini -> Groq -> OpenRouter)
+    message = None
+    try:
+        res = generate_ai_wish(
+            recipient_name=contact.name,
+            occasion=occasion,
+            tone=tone,
+            language=language,
+            relationship=contact.relationship or 'Friend',
+            user_id=user.id,
+            use_cache=True,
+        )
+        message = res.get("content")
+        if not message:
+            logger.warning(f"AI returned empty response for automated wish for {contact.name}")
+    except Exception as e:
+        logger.error(f"AI auto wish generation failed: {e}")
         message = None
 
     # If AI failed or no API key, generate a fallback message (but not the hardcoded generic one)

@@ -46,6 +46,36 @@ META_LABEL_PATTERN = re.compile(
     r'^[A-Z][A-Za-z\s]{0,30}:\s*$'
 )
 
+# ---------------------------------------------------------------------------
+# Paragraph-label patterns — Gemini sometimes returns structural labels like:
+#   Paragraph 1:        *Paragraph 2:*       **Paragraph 3:**
+# These are pure metadata lines that must never reach the user.
+# The pattern matches the label alone (optionally markdown-bold/italic wrapped)
+# and requires the line to consist of ONLY that label (possibly with trailing
+# colon / whitespace) so we never accidentally strip greeting content.
+# ---------------------------------------------------------------------------
+PARAGRAPH_LABEL_PATTERN = re.compile(
+    r'^\*{0,2}\s*[Pp]aragraph\s*\d+\s*[:]?\s*\*{0,2}$'
+)
+
+# ---------------------------------------------------------------------------
+# Word-count metadata patterns — match entire lines that are purely a count.
+# Safe: numbers that are part of sentences ("Happy 21st birthday!") are NOT
+# on their own line and won't match, because we only test stripped lines
+# that contain ONLY a count expression.
+# ---------------------------------------------------------------------------
+WORD_COUNT_LINE_PATTERNS = [
+    # (19 words)  /  [19 words]  /  {19 words}
+    re.compile(r'^[\(\[\{]?\s*\d+\s*/\s*\d+\s+words\s*[\)\]\}]?$', re.IGNORECASE),
+    re.compile(r'^[\(\[\{]?\s*approximately\s+\d+\s+words\s*[\)\]\}]?$', re.IGNORECASE),
+    re.compile(r'^[\(\[\{]?\s*\d+\s+words?\s*[\)\]\}]?$', re.IGNORECASE),
+    # Word count: 43  /  Words: 19  /  Total words: 85
+    re.compile(r'^(?:total\s+)?words?\s*(?:count)?\s*:\s*\d+$', re.IGNORECASE),
+    re.compile(r'^word\s+count\s*:\s*\d+$', re.IGNORECASE),
+    # Trailing fragments like ".../19 words)" or "/ 120 words)"
+    re.compile(r'^[./\s]*\d+\s*words?[\)\]\}]?$', re.IGNORECASE),
+]
+
 # Common reasoning block prefixes across providers (lowercased for startswith matching)
 REASONING_PREFIXES = (
     # Sentence and line labels
@@ -274,6 +304,31 @@ def clean_ai_response(text: str) -> str:
         cleaned = "\n".join(filtered_lines).strip()
     else:
         cleaned = text.strip()
+
+    # 3a. Remove paragraph-label lines anywhere in the text (Gemini structural metadata).
+    #     These can appear mid-text, so we must scan the whole cleaned string again.
+    #     We preserve surrounding blank lines so paragraph structure is intact after
+    #     label removal — consecutive blank lines are collapsed in step 3b.
+    label_filtered: List[str] = []
+    for line in cleaned.split('\n'):
+        stripped = line.strip()
+        if PARAGRAPH_LABEL_PATTERN.match(stripped):
+            continue  # drop "Paragraph N:" / "*Paragraph N:*" / "**Paragraph N:**"
+        label_filtered.append(line)
+    cleaned = "\n".join(label_filtered)
+
+    # 3b. Remove lines that are purely word-count metadata, anywhere in the text.
+    count_filtered: List[str] = []
+    for line in cleaned.split('\n'):
+        stripped = line.strip()
+        if stripped and any(p.match(stripped) for p in WORD_COUNT_LINE_PATTERNS):
+            continue  # drop "(19 words)", "Word count: 43", etc.
+        count_filtered.append(line)
+    cleaned = "\n".join(count_filtered)
+
+    # 3c. Collapse runs of 3+ consecutive blank lines down to exactly 2
+    #     (i.e. one blank line between paragraphs) without destroying real paragraph breaks.
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
 
     # 4. Remove leading intro patterns from single lines
     for pattern in INTRO_HEADER_PATTERNS:
