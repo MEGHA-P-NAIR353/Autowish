@@ -75,12 +75,21 @@ function LoadingSkeleton() {
   );
 }
 
-function EmptyState({ icon: Icon, title, description, action }) {
+function EmptyState({ icon: iconProp, title, description, action }) {
+  const renderIcon = () => {
+    if (!iconProp) return null;
+    if (React.isValidElement(iconProp)) {
+      return iconProp;
+    }
+    const IconComponent = iconProp;
+    return <IconComponent className="text-slate-500" size={32} />;
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-20 h-20 rounded-2xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center mb-5">
-        <Icon className="text-slate-500" size={32} />
+        {renderIcon()}
       </div>
       <h3 className="text-slate-200 font-semibold text-lg mb-2">{title}</h3>
       <p className="text-slate-500 text-sm max-w-xs mb-6">{description}</p>
@@ -92,6 +101,7 @@ function EmptyState({ icon: Icon, title, description, action }) {
     </motion.div>
   );
 }
+
 
 // ─── Delete Confirm Dialog ────────────────────────────────────────────────────
 

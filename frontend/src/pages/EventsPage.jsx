@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/common/EmptyState';
-import { Plus, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Calendar, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const EventsPage = () => {
-  const { events, addEvent, deleteEvent, contacts } = useData();
+  const { events = [], addEvent, deleteEvent, contacts = [], loading = false, fetchAll } = useData();
   const [view, setView] = useState('card');
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -14,28 +14,38 @@ const EventsPage = () => {
   });
   const [filterType, setFilterType] = useState('All');
 
-  const filteredEvents = events.filter(e => filterType === 'All' || e.type === filterType);
+  const safeEvents = Array.isArray(events) ? events : [];
+  const safeContacts = Array.isArray(contacts) ? contacts : [];
+  const filteredEvents = safeEvents.filter(e => filterType === 'All' || e?.type === filterType);
 
   const handleAdd = () => {
     setFormData({ title: '', type: 'Birthday', date: '', recipient: '', status: 'Upcoming' });
     setShowModal(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.recipient) {
       toast.error('Please fill required fields');
       return;
     }
-    addEvent(formData);
-    toast.success('Event added successfully');
-    setShowModal(false);
+    try {
+      await addEvent(formData);
+      toast.success('Event added successfully');
+      setShowModal(false);
+    } catch {
+      toast.error('Failed to save event');
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Delete this event?')) {
-      deleteEvent(id);
-      toast.success('Event removed');
+      try {
+        await deleteEvent(id);
+        toast.success('Event removed');
+      } catch {
+        toast.error('Failed to remove event');
+      }
     }
   };
 
@@ -48,9 +58,20 @@ const EventsPage = () => {
           <h1 className="text-3xl font-bold">Event Management</h1>
           <p className="text-[#94A3B8]">Manage birthdays, anniversaries, holidays and more</p>
         </div>
-        <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
-          <Plus size={16} /> Add Event
-        </button>
+        <div className="flex items-center gap-3">
+          {fetchAll && (
+            <button
+              onClick={() => fetchAll()}
+              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 rounded-xl transition"
+              title="Refresh events"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            </button>
+          )}
+          <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Add Event
+          </button>
+        </div>
       </div>
 
       {/* Tabs: Card / List View */}
@@ -81,83 +102,104 @@ const EventsPage = () => {
         </div>
       </div>
 
-      {/* Card View */}
-      {view === 'card' && (
-        filteredEvents.length === 0 ? (
-          <EmptyState
-            icon={<Calendar size={28} />}
-            title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
-            description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found. Try a different filter or add a new event.`}
-            action={{ label: 'Add Event', onClick: handleAdd }}
-          />
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredEvents.map(event => (
-              <div key={event.id} className="event-card">
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`badge px-3 py-0.5 text-xs ${event.type === 'Birthday' ? 'bg-blue-500/20 text-blue-400' :
-                    event.type === 'Anniversary' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                    {event.type}
-                  </div>
-                  <div className="text-xs text-[#64748B]">{event.date}</div>
-                </div>
-
-                <div className="font-semibold text-lg mb-1">{event.title}</div>
-                <div className="text-sm text-[#94A3B8]">{event.recipient}</div>
-
-                <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#334155]">
-                  <div className="text-xs px-3 py-1 rounded-full bg-[#0F172A] border border-[#334155]">{event.status}</div>
-                  <div className="flex gap-1">
-                    <button className="p-1.5 hover:bg-[#334155] rounded-lg" onClick={() => handleDelete(event.id)}>
-                      <Trash2 size={15} className="text-red-400" />
-                    </button>
-                  </div>
-                </div>
+      {/* Loading Skeleton */}
+      {loading && safeEvents.length === 0 ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(n => (
+            <div key={n} className="event-card animate-pulse">
+              <div className="flex justify-between items-center mb-3">
+                <div className="h-4 w-16 bg-slate-700 rounded-full" />
+                <div className="h-3 w-14 bg-slate-700 rounded" />
               </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {/* List / Event View */}
-      {view === 'list' && (
-        filteredEvents.length === 0 ? (
-          <EmptyState
-            icon={<Calendar size={28} />}
-            title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
-            description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found.`}
-            action={{ label: 'Add Event', onClick: handleAdd }}
-          />
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Type</th>
-                  <th>Date</th>
-                  <th>Recipient</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+              <div className="h-5 w-3/4 bg-slate-700 rounded mb-2" />
+              <div className="h-4 w-1/2 bg-slate-700 rounded mb-4" />
+              <div className="h-8 bg-slate-700/50 rounded mt-4" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Card View */}
+          {view === 'card' && (
+            filteredEvents.length === 0 ? (
+              <EmptyState
+                icon={<Calendar size={28} />}
+                title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
+                description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found. Try a different filter or add a new event.`}
+                action={{ label: 'Add Event', onClick: handleAdd }}
+              />
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredEvents.map(event => (
-                  <tr key={event.id} className="hover:bg-[#1E293B]/40">
-                    <td className="font-medium">{event.title}</td>
-                    <td><span className="badge bg-[#334155] px-2.5">{event.type}</span></td>
-                    <td className="text-sm">{event.date}</td>
-                    <td>{event.recipient}</td>
-                    <td><span className="text-emerald-400 text-xs font-medium">{event.status}</span></td>
-                    <td className="text-right">
-                      <button onClick={() => handleDelete(event.id)} className="p-2 text-red-400 hover:bg-[#334155] rounded-md"><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
+                  <div key={event.id} className="event-card">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className={`badge px-3 py-0.5 text-xs ${event.type === 'Birthday' ? 'bg-blue-500/20 text-blue-400' :
+                        event.type === 'Anniversary' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                        {event.type || 'Event'}
+                      </div>
+                      <div className="text-xs text-[#64748B]">{event.date}</div>
+                    </div>
+
+                    <div className="font-semibold text-lg mb-1">{event.title}</div>
+                    <div className="text-sm text-[#94A3B8]">{event.recipient}</div>
+
+                    <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#334155]">
+                      <div className="text-xs px-3 py-1 rounded-full bg-[#0F172A] border border-[#334155]">{event.status || 'Upcoming'}</div>
+                      <div className="flex gap-1">
+                        <button className="p-1.5 hover:bg-[#334155] rounded-lg transition" onClick={() => handleDelete(event.id)} title="Delete event">
+                          <Trash2 size={15} className="text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )
+              </div>
+            )
+          )}
+
+          {/* List / Event View */}
+          {view === 'list' && (
+            filteredEvents.length === 0 ? (
+              <EmptyState
+                icon={<Calendar size={28} />}
+                title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
+                description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found.`}
+                action={{ label: 'Add Event', onClick: handleAdd }}
+              />
+            ) : (
+              <div className="card overflow-hidden">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Event</th>
+                      <th>Type</th>
+                      <th>Date</th>
+                      <th>Recipient</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEvents.map(event => (
+                      <tr key={event.id} className="hover:bg-[#1E293B]/40">
+                        <td className="font-medium">{event.title}</td>
+                        <td><span className="badge bg-[#334155] px-2.5">{event.type}</span></td>
+                        <td className="text-sm">{event.date}</td>
+                        <td>{event.recipient}</td>
+                        <td><span className="text-emerald-400 text-xs font-medium">{event.status || 'Upcoming'}</span></td>
+                        <td className="text-right">
+                          <button onClick={() => handleDelete(event.id)} className="p-2 text-red-400 hover:bg-[#334155] rounded-md transition" title="Delete event">
+                            <Trash2 size={15} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </>
       )}
 
       {/* Add Event Modal */}
@@ -187,7 +229,7 @@ const EventsPage = () => {
             <label className="text-xs text-[#94A3B8]">Recipient</label>
             <select value={formData.recipient} onChange={e => setFormData({...formData, recipient: e.target.value})} className="input">
               <option value="">Select recipient</option>
-              {contacts.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {safeContacts.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               <option value="Team">Team</option>
             </select>
           </div>
@@ -203,3 +245,4 @@ const EventsPage = () => {
 };
 
 export default EventsPage;
+
