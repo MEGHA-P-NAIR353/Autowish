@@ -5,7 +5,29 @@ Defines the uniform interface and exceptions for all AI providers.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
+
+
+@dataclass
+class ProviderResult:
+    """
+    Structured response metadata returned by an AI provider.
+    Allows ProviderManager to make informed routing, retry, and fallback decisions.
+    """
+    provider: str
+    model: str
+    text: str
+    finish_reason: Optional[str] = None
+    success: bool = True
+    retryable: bool = False
+    token_usage: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    latency_ms: float = 0.0
+
+    def __str__(self) -> str:
+        """Allow duck-typing as string if needed for backward compatibility."""
+        return self.text
 
 
 class AIProviderError(Exception):
@@ -32,7 +54,7 @@ class ProviderRateLimitError(AIProviderError):
 
 
 class ProviderModelNotFoundError(AIProviderError):
-    """Raised when provider returns HTTP 404 / Model not found."""
+    """Raised when provider returns HTTP 404 / Model not found / decommissioned."""
     pass
 
 
@@ -78,9 +100,9 @@ class BaseAIProvider(ABC):
         temperature: float = 0.9,
         top_p: float = 0.95,
         timeout: Optional[float] = None,
-    ) -> str:
+    ) -> ProviderResult:
         """
-        Generate text response from the provider.
+        Generate structured response from the provider.
 
         Args:
             prompt: User/Greeting prompt.
@@ -91,7 +113,7 @@ class BaseAIProvider(ABC):
             timeout: Maximum allowed execution time in seconds.
 
         Returns:
-            Raw generated string from the model.
+            ProviderResult structured object with text, finish_reason, token_usage, latency, etc.
 
         Raises:
             ProviderAuthError
@@ -106,3 +128,4 @@ class BaseAIProvider(ABC):
     def masked_key(self) -> str:
         """Helper to return masked key for safe debugging."""
         return "CONFIGURED" if self.is_configured() else "NOT_CONFIGURED"
+

@@ -5,10 +5,12 @@ services/ai/providers/__init__.py - AI Providers package
 
 from .base import (
     BaseAIProvider,
+    ProviderResult,
     AIProviderError,
     ProviderAuthError,
     ProviderTimeoutError,
     ProviderRateLimitError,
+    ProviderModelNotFoundError,
     ProviderUnavailableError,
     ProviderResponseError,
 )
@@ -18,13 +20,16 @@ from .openrouter_provider import OpenRouterProvider
 
 __all__ = [
     "BaseAIProvider",
+    "ProviderResult",
     "AIProviderError",
     "ProviderAuthError",
     "ProviderTimeoutError",
     "ProviderRateLimitError",
+    "ProviderModelNotFoundError",
     "ProviderUnavailableError",
     "ProviderResponseError",
     "GeminiProvider",
     "GroqProvider",
     "OpenRouterProvider",
 ]
+

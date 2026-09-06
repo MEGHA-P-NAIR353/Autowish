@@ -27,6 +27,7 @@ from rest_framework import status
 
 from services.ai.providers.base import (
     BaseAIProvider,
+    ProviderResult,
     ProviderAuthError,
     ProviderTimeoutError,
     ProviderRateLimitError,
@@ -60,7 +61,9 @@ class MockProvider(BaseAIProvider):
         self.call_count = 0
         self.behavior = "success"
         self.return_text = f"Happy Birthday from {name}! 🎂 Wishing you all the best."
+        self.return_finish_reason = "STOP"
         self.exception_to_raise = None
+        self.call_args_list = []
 
     @property
     def name(self) -> str:
@@ -72,8 +75,9 @@ class MockProvider(BaseAIProvider):
     def get_model_name(self) -> str:
         return self._model_name
 
-    def generate(self, prompt: str, **kwargs) -> str:
+    def generate(self, prompt: str, **kwargs) -> ProviderResult:
         self.call_count += 1
+        self.call_args_list.append((prompt, kwargs))
         if self.behavior == "model_not_found":
             raise ProviderModelNotFoundError(f"Model {self._model_name} not found", provider=self.name)
         elif self.behavior == "auth_error":
@@ -85,14 +89,37 @@ class MockProvider(BaseAIProvider):
         elif self.behavior == "unavailable":
             raise ProviderUnavailableError("Service down", provider=self.name)
         elif self.behavior == "empty_response":
-            return ""
+            return ProviderResult(provider=self.name, model=self._model_name, text="")
         elif self.behavior == "template_text":
-            return "Greeting + Name"
+            return ProviderResult(provider=self.name, model=self._model_name, text="Greeting + Name")
         elif self.behavior == "reasoning_text":
-            return "Thinking: generate wish\nDraft:\nHappy Birthday, Rahul! 🎉"
+            return ProviderResult(provider=self.name, model=self._model_name, text="Thinking: generate wish\nDraft:\nHappy Birthday, Rahul! 🎉")
+        elif self.behavior == "max_tokens_truncated":
+            # First call returns truncated, second call returns completed
+            if self.call_count == 1:
+                return ProviderResult(
+                    provider=self.name,
+                    model=self._model_name,
+                    text="Happy Birthday, Rahul! Wishing you joy (and wonderful memories",
+                    finish_reason="MAX_TOKENS",
+                )
+            else:
+                return ProviderResult(
+                    provider=self.name,
+                    model=self._model_name,
+                    text="Happy Birthday, Rahul! Wishing you joy and wonderful memories! 🎉",
+                    finish_reason="STOP",
+                )
         elif self.behavior == "custom_exception" and self.exception_to_raise:
             raise self.exception_to_raise
-        return self.return_text
+
+        return ProviderResult(
+            provider=self.name,
+            model=self._model_name,
+            text=self.return_text,
+            finish_reason=self.return_finish_reason,
+            latency_ms=10.0,
+        )
 
 
 @override_settings(CACHES=TEST_CACHES)
@@ -101,8 +128,8 @@ class MultiProviderAITests(TestCase):
     def setUp(self):
         cache.clear()
         self.gemini = MockProvider("gemini", configured=True, model_name="gemini-3.6-flash")
-        self.groq = MockProvider("groq", configured=True, model_name="llama-3.1-8b-instant")
-        self.openrouter = MockProvider("openrouter", configured=True, model_name="nvidia/nemotron-3-super:free")
+        self.groq = MockProvider("groq", configured=True, model_name="llama-3.3-70b-versatile")
+        self.openrouter = MockProvider("openrouter", configured=True, model_name="meta-llama/llama-3.3-70b-instruct:free")
         self.manager = ProviderManager(providers=[self.gemini, self.groq, self.openrouter])
 
     def tearDown(self):
@@ -239,15 +266,54 @@ class MultiProviderAITests(TestCase):
         self.assertEqual(AICacheService.get_cached_wish(key_user_a), "Private wish for User A")
         self.assertIsNone(AICacheService.get_cached_wish(key_user_b))
 
-    # ── Test 11: Multilingual & Unicode Support ────────────────────────────────
-    def test_multilingual_unicode_malayalam_support(self):
-        """Malayalam script and emojis must be sanitized and preserved intact."""
-        self.gemini.return_text = "ജന്മദിനാശംസകൾ, രാഹുൽ! 🎂 നിങ്ങളുടെ ഈ പ്രത്യേക ദിവസം സന്തോഷം നിറഞ്ഞതാകട്ടെ."
+    # ── Test 11: Multilingual & Unicode Support (Malayalam 'ൽ') ────────────────
+    def test_multilingual_unicode_malayalam_with_chillu_letter(self):
+        """Malayalam script ending in a chillu letter (e.g. 'ൽ') must be accepted."""
+        self.gemini.return_text = "ജന്മദിനാശംസകൾ, രാഹുൽ! നിങ്ങളുടെ ഈ പ്രത്യേക ദിവസം സന്തോഷം നിറഞ്ഞതാകട്ടെ, സ്നേഹത്തോടെ രാഹുൽ"
         res = self.manager.generate("Malayalam prompt", recipient_name="രാഹുൽ", use_cache=False)
-        self.assertIn("ജന്മദിനാശംസകൾ", res["content"])
-        self.assertIn("🎂", res["content"])
+        self.assertEqual(res["provider"], "gemini")
+        self.assertIn("രാഹുൽ", res["content"])
+        self.assertEqual(self.groq.call_count, 0)
 
-    # ── Test 12: Masked Key and Privacy ────────────────────────────────────────
+    # ── Test 12: Hindi Text Ending in Unicode Letter ─────────────────────────
+    def test_hindi_text_ending_in_unicode_letter(self):
+        """Hindi text ending in a Devanagari character without ASCII punctuation must be accepted."""
+        self.gemini.return_text = "जन्मदिन की ढेर सारी शुभकामनाएं सारा आप हमेशा खुश और स्वस्थ रहें"
+        res = self.manager.generate("Hindi prompt", recipient_name="सारा", use_cache=False)
+        self.assertEqual(res["provider"], "gemini")
+        self.assertIn("शुभकामनाएं", res["content"])
+        self.assertEqual(self.groq.call_count, 0)
+
+    # ── Test 13: English Text Without Final Punctuation ──────────────────────
+    def test_english_text_without_final_punctuation_accepted(self):
+        """English text that ends without punctuation must not automatically fail."""
+        self.gemini.return_text = "Happy Birthday dear John wishing you a very wonderful year ahead"
+        res = self.manager.generate("English prompt", recipient_name="John", use_cache=False)
+        self.assertEqual(res["provider"], "gemini")
+        self.assertEqual(res["content"], "Happy Birthday dear John wishing you a very wonderful year ahead")
+        self.assertEqual(self.groq.call_count, 0)
+
+    # ── Test 14: Empty Output Fails and Falls Back ───────────────────────────
+    def test_empty_output_fails_and_falls_back(self):
+        """Empty provider output must fail validation and fall back to next provider."""
+        self.gemini.behavior = "empty_response"
+        res = self.manager.generate("Prompt", recipient_name="Sam", use_cache=False)
+        self.assertEqual(res["provider"], "groq")
+        self.assertEqual(self.gemini.call_count, 1)
+        self.assertEqual(self.groq.call_count, 1)
+
+    # ── Test 15: Gemini MAX_TOKENS with Incomplete Delimiters Retries ─────────
+    def test_gemini_max_tokens_truncated_retries_once(self):
+        """When Gemini returns MAX_TOKENS with unclosed brackets, provider_manager retries once."""
+        self.gemini.behavior = "max_tokens_truncated"
+        res = self.manager.generate("Prompt", recipient_name="Rahul", use_cache=False)
+        self.assertEqual(res["provider"], "gemini")
+        # Should have called Gemini twice (initial + 1 retry) and succeeded without Groq
+        self.assertEqual(self.gemini.call_count, 2)
+        self.assertEqual(self.groq.call_count, 0)
+        self.assertIn("Happy Birthday, Rahul!", res["content"])
+
+    # ── Test 16: Masked Key and Privacy ────────────────────────────────────────
     def test_masked_keys_do_not_leak_secrets(self):
         """Masked keys helper must never reveal full key strings."""
         gemini = GeminiProvider()
@@ -258,6 +324,66 @@ class MultiProviderAITests(TestCase):
             if p.is_configured():
                 self.assertTrue(m.startswith("****"))
                 self.assertLessEqual(len(m), 8)
+
+
+@override_settings(CACHES=TEST_CACHES)
+class ProviderModelFailoverUnitTests(TestCase):
+    """Unit tests for individual provider fallback and model skip behaviors."""
+
+    @patch("services.ai.providers.groq_provider.Groq")
+    @override_settings(GROQ_API_KEY="test_groq_key", GROQ_MODEL="decommissioned-model", GROQ_FALLBACK_MODELS="decommissioned-model,llama-3.3-70b-versatile")
+    def test_groq_skips_decommissioned_model_immediately(self, mock_groq_class):
+        """GroqProvider should skip decommissioned/not-found model immediately without repeated retries."""
+        from groq import NotFoundError
+        mock_client = MagicMock()
+        mock_groq_class.return_value = mock_client
+
+        # First model fails with NotFoundError (404/decommissioned), second model succeeds
+        mock_success_response = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Warm Birthday greetings from Groq! 🌟"
+        mock_choice.finish_reason = "stop"
+        mock_success_response.choices = [mock_choice]
+        mock_success_response.usage = None
+
+        mock_client.chat.completions.create.side_effect = [
+            NotFoundError("Model decommissioned-model is decommissioned", response=MagicMock(status_code=404), body=None),
+            mock_success_response,
+        ]
+
+        provider = GroqProvider()
+        result = provider.generate("Wish prompt")
+        self.assertIsInstance(result, ProviderResult)
+        self.assertEqual(result.model, "llama-3.3-70b-versatile")
+        self.assertEqual(result.text, "Warm Birthday greetings from Groq! 🌟")
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+
+    @patch("services.ai.providers.openrouter_provider.OpenAI")
+    @override_settings(OPENROUTER_API_KEY="test_or_key", OPENROUTER_MODEL="unsupported-free-model", OPENROUTER_FALLBACK_MODELS="unsupported-free-model,meta-llama/llama-3.3-70b-instruct:free")
+    def test_openrouter_skips_404_model_immediately(self, mock_openai_class):
+        """OpenRouterProvider should skip 404 unavailable models immediately and try next fallback."""
+        from openai import NotFoundError
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_success = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Heartfelt Birthday wish from OpenRouter! ✨"
+        mock_choice.finish_reason = "stop"
+        mock_success.choices = [mock_choice]
+        mock_success.usage = None
+
+        mock_client.chat.completions.create.side_effect = [
+            NotFoundError("Model unsupported-free-model not found", response=MagicMock(status_code=404), body=None),
+            mock_success,
+        ]
+
+        provider = OpenRouterProvider()
+        result = provider.generate("Wish prompt")
+        self.assertIsInstance(result, ProviderResult)
+        self.assertEqual(result.model, "meta-llama/llama-3.3-70b-instruct:free")
+        self.assertEqual(result.text, "Heartfelt Birthday wish from OpenRouter! ✨")
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
 
 
 @override_settings(CACHES=TEST_CACHES)
@@ -272,7 +398,6 @@ class APIEndpointIntegrationTests(TestCase):
             password="testpassword123",
             first_name="Test"
         )
-        # UserProfile is created automatically by post_save signal
         self.client.force_authenticate(user=self.user)
         self.contact = Contact.objects.create(
             user=self.user,
@@ -284,7 +409,7 @@ class APIEndpointIntegrationTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    # ── Test 13: Existing AI API Endpoint Compatibility ────────────────────────
+    # ── Test 17: Existing AI API Endpoint Compatibility ────────────────────────
     @patch("services.ai.provider_manager.get_provider_manager")
     def test_ai_generate_endpoint_success_and_contract(self, mock_get_manager):
         """Verify POST /api/ai/generate/ returns correct response format with id, greeting, provider, etc."""
@@ -320,7 +445,7 @@ class APIEndpointIntegrationTests(TestCase):
     def test_ai_generate_endpoint_all_fail_clean_error(self, mock_get_manager):
         """When AI providers fail, endpoint returns clean 500 without leaking stack traces or keys."""
         mock_mgr = MagicMock()
-        mock_mgr.generate.side_effect = RuntimeError("All providers failed.")
+        mock_mgr.generate.side_effect = RuntimeError("AI generation is temporarily unavailable. All providers failed.")
         mock_get_manager.return_value = mock_mgr
 
         payload = {
@@ -338,3 +463,4 @@ class APIEndpointIntegrationTests(TestCase):
         # Ensure no tracebacks or keys in response
         self.assertNotIn("Traceback", str(data))
         self.assertNotIn("API_KEY", str(data))
+

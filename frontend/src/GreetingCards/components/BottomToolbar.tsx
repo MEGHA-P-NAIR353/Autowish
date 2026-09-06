@@ -8,6 +8,7 @@ interface BottomToolbarProps {
   onDownload: () => void;
   onSend: () => void;
   isSaving: boolean;
+  isOverflowed?: boolean;
 }
 
 export default function BottomToolbar({
@@ -17,6 +18,7 @@ export default function BottomToolbar({
   onDownload,
   onSend,
   isSaving,
+  isOverflowed = false,
 }: BottomToolbarProps) {
   return (
     <div className="w-full bg-[#0D121F]/90 backdrop-blur-md border-t border-slate-800/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20">
@@ -57,7 +59,9 @@ export default function BottomToolbar({
         <button
           type="button"
           onClick={onDownload}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl text-xs font-semibold transition-all"
+          disabled={isOverflowed}
+          title={isOverflowed ? 'Cannot download: message exceeds card bounds' : undefined}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-indigo-400 hover:text-white rounded-xl text-xs font-semibold transition-all"
         >
           <Download size={14} />
           <span>Download</span>
@@ -66,7 +70,9 @@ export default function BottomToolbar({
         <button
           type="button"
           onClick={onSend}
-          className="flex items-center gap-2 px-5 py-2 bg-indigo-650 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/20 transition-all"
+          disabled={isOverflowed}
+          title={isOverflowed ? 'Cannot send: message exceeds card bounds' : undefined}
+          className="flex items-center gap-2 px-5 py-2 bg-indigo-650 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/20 transition-all"
         >
           <Send size={14} />
           <span>Publish &amp; Send</span>

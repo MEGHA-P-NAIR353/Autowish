@@ -4,6 +4,15 @@
 .env
 .env.*
 !.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# =========================
+# Celery Beat State
+# =========================
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
 
 # =========================
 # Python

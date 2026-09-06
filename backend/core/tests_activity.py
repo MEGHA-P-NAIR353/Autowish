@@ -13,7 +13,7 @@ from datetime import timedelta
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
 
-from .models import ActivityLog, Contact, Event, ScheduledWish, GreetingCard, GreetingTemplate
+from core.models import ActivityLog, Contact, Event, ScheduledWish, GreetingCard, GreetingTemplate
 from services.activity_service import create_activity
 
 

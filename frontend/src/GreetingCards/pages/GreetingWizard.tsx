@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Cake, Heart, Sparkles, Flame, Trees, GraduationCap, Gift, Smile, Star,
@@ -14,6 +14,7 @@ import TemplatePreview from '../components/TemplatePreview';
 import { cardsAPI, cardTemplatesAPI } from '../../services/greetingCardsAPI';
 import { GreetingCardData, CardTemplate } from '../types';
 import { useData } from '../../context/DataContext';
+import { AutoFitResult } from '../utils/textMeasurement';
 import toast from 'react-hot-toast';
 
 const STEPS = ['Select Occasion', 'Choose Template', 'Customize Card', 'Send & Download'];
@@ -35,18 +36,24 @@ const OCCASIONS = [
 
 export default function GreetingWizard() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
   const { contacts, refetchGreetingAnalytics, fetchNotifications } = useData();
+  // Prevent double-fetch on React StrictMode double-mount
+  const templateInitialized = useRef(false);
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<CardTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<CardTemplate | null>(null);
+  const [autoFitResult, setAutoFitResult] = useState<AutoFitResult | null>(null);
 
   // Core state for guided greeting card
   const [cardData, setCardData] = useState<GreetingCardData>({
@@ -66,11 +73,16 @@ export default function GreetingWizard() {
     text_color: '#FFFFFF',
   });
 
-  // Load existing card if editing or creating via route param
+  // ─── Load existing USER CARD when editing via route param (:id) ──────────────
   useEffect(() => {
     if (id) {
       cardsAPI.get(id).then((res) => {
         const data = res.data;
+        // Safely parse elements_json which may be a JSON string or already an array
+        let elements = data.elements_json;
+        if (typeof elements === 'string') {
+          try { elements = JSON.parse(elements); } catch { elements = []; }
+        }
         setCardData({
           id: data.id,
           title: data.title,
@@ -91,13 +103,64 @@ export default function GreetingWizard() {
           font_family: data.font_family || 'Inter',
           font_size: data.font_size || 18,
           text_color: data.text_color || '#FFFFFF',
-          elements_json: data.elements_json || [],
+          elements_json: Array.isArray(elements) ? elements : [],
           status: data.status || 'draft',
         });
         setStep(3); // Start directly at customize step if card exists
+      }).catch((error) => {
+        console.error('Failed to load greeting card for editing', error, { cardId: id });
+        toast.error('Could not load card. Please try again.');
       });
     }
   }, [id]);
+
+  // ─── Load TEMPLATE when navigating from Templates page (?template=<id>) ──────
+  useEffect(() => {
+    const templateId = searchParams.get('template');
+    if (!templateId) return;
+    // Guard against React StrictMode double-invocation
+    if (templateInitialized.current) return;
+    templateInitialized.current = true;
+
+    setIsInitializing(true);
+    setInitError(null);
+
+    cardTemplatesAPI.get(templateId)
+      .then((res) => {
+        const tpl: CardTemplate = res.data;
+        // Safely normalize elements_json — may be a JSON string or already an array
+        let elements = tpl.elements_json;
+        if (typeof elements === 'string') {
+          try { elements = JSON.parse(elements as unknown as string); } catch { elements = []; }
+        }
+        setSelectedTemplateId(tpl.id);
+        setCardData((prev) => ({
+          ...prev,
+          title: prev.title === 'My Custom Greeting Card'
+            ? `${tpl.title} Card`
+            : prev.title,
+          occasion: tpl.occasion || prev.occasion,
+          card_size: 'instagram_square',
+          card_theme: 'dark',
+          card_width: tpl.card_width || prev.card_width,
+          card_height: tpl.card_height || prev.card_height,
+          background_color: tpl.background_color || prev.background_color,
+          background_image: tpl.background_image_url || '',
+          font_family: tpl.font_family || prev.font_family,
+          font_size: tpl.font_size || prev.font_size,
+          text_color: tpl.text_color || prev.text_color,
+          elements_json: Array.isArray(elements) ? elements : [],
+        }));
+        setStep(3);
+      })
+      .catch((error) => {
+        console.error('Failed to initialize template editor', error, { templateId });
+        setInitError('Could not load the selected template. It may no longer be available.');
+      })
+      .finally(() => {
+        setIsInitializing(false);
+      });
+  }, [searchParams]);
 
   // Load premium templates (base) + optionally merge API templates
   useEffect(() => {
@@ -143,6 +206,11 @@ export default function GreetingWizard() {
   };
 
   const handleSave = async (status: 'draft' | 'published') => {
+    if (status === 'published' && autoFitResult?.overflow) {
+      toast.error('Cannot publish card: The message is too long for this card design. Please shorten the message first.');
+      return;
+    }
+
     setLoading(true);
     try {
       const fd = new FormData();
@@ -177,8 +245,16 @@ export default function GreetingWizard() {
       // Save preview snapshot using html2canvas
       if (cardRef.current) {
         try {
+          if (typeof document !== 'undefined' && document.fonts) {
+            await document.fonts.ready;
+          }
           const html2canvas = (await import('html2canvas')).default;
-          const canvas = await html2canvas(cardRef.current, { useCORS: true, scale: 1 });
+          const canvas = await html2canvas(cardRef.current, {
+            useCORS: true,
+            scale: 1.5,
+            backgroundColor: null,
+            logging: false,
+          });
           const base64 = canvas.toDataURL('image/png');
           await cardsAPI.savePreview(savedCardId, base64);
         } catch (previewErr) {
@@ -217,20 +293,62 @@ export default function GreetingWizard() {
   };
 
   const handleDownload = async () => {
+    if (autoFitResult?.overflow) {
+      toast.error('Cannot download card: The message is too long for this card design. Please shorten your message first.');
+      return;
+    }
+
     if (cardRef.current) {
       try {
+        if (typeof document !== 'undefined' && document.fonts) {
+          await document.fonts.ready;
+        }
         const html2canvas = (await import('html2canvas')).default;
-        const canvas = await html2canvas(cardRef.current, { useCORS: true, scale: 2 });
+        const canvas = await html2canvas(cardRef.current, {
+          useCORS: true,
+          scale: 2,
+          backgroundColor: null,
+          logging: false,
+        });
         const link = document.createElement('a');
         link.download = `${cardData.occasion || 'Greeting'}_Wish.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         toast.success('Downloaded card image!');
-      } catch {
+      } catch (err) {
+        console.error('Image download error:', err);
         toast.error('Failed to generate image download');
       }
     }
   };
+
+  // ─── Loading / Error gates ────────────────────────────────────────────────────
+  if (isInitializing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-[#0B0F19] text-slate-100 gap-4">
+        <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+        <p className="text-sm text-slate-400">Loading template editor…</p>
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-[#0B0F19] text-slate-100 gap-4 p-6">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
+          <X size={28} className="text-red-400" />
+        </div>
+        <h2 className="text-lg font-bold text-white">Template Unavailable</h2>
+        <p className="text-sm text-slate-400 text-center max-w-sm">{initError}</p>
+        <button
+          onClick={() => navigate('/greeting-cards/templates')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all"
+        >
+          Back to Templates
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#0B0F19] text-slate-100 overflow-hidden">
@@ -401,6 +519,7 @@ export default function GreetingWizard() {
                   onChange={(updates) => setCardData((prev) => ({ ...prev, ...updates }))}
                   contacts={contacts}
                   selectedContact={selectedContact}
+                  autoFitResult={autoFitResult || undefined}
                   onSelectContact={(c) => {
                     setSelectedContact(c);
                     if (c) {
@@ -425,7 +544,11 @@ export default function GreetingWizard() {
               {/* Right side live card preview (occupies ~65% width) */}
               <div className="w-full md:w-[65%] bg-[#0B0F19] flex flex-col justify-center items-center p-6 relative">
                 <div className="w-full max-w-[450px]">
-                  <LivePreview ref={cardRef} cardData={cardData} />
+                  <LivePreview
+                    ref={cardRef}
+                    cardData={cardData}
+                    onAutoFitResult={setAutoFitResult}
+                  />
                 </div>
               </div>
             </motion.div>
@@ -452,8 +575,18 @@ export default function GreetingWizard() {
               </div>
 
               <div className="w-full max-w-[340px] bg-slate-900/40 p-3 rounded-2xl border border-slate-800/80">
-                <LivePreview cardData={cardData} />
+                <LivePreview
+                  ref={cardRef}
+                  cardData={cardData}
+                  onAutoFitResult={setAutoFitResult}
+                />
               </div>
+
+              {autoFitResult?.overflow && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-xl text-xs max-w-sm">
+                  ⚠️ Your message exceeds the printable card area. Please go back to Customize to shorten it before downloading or sending.
+                </div>
+              )}
 
               {!selectedContact && (
                 <p className="text-[11px] text-amber-400/90">
@@ -469,13 +602,14 @@ export default function GreetingWizard() {
               <div className="flex gap-3 w-full max-w-sm">
                 <button
                   onClick={handleDownload}
-                  className="flex-1 py-2.5 bg-slate-850 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+                  disabled={autoFitResult?.overflow}
+                  className="flex-1 py-2.5 bg-slate-850 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 rounded-xl text-xs font-semibold border border-slate-800 transition-all"
                 >
                   Download Image
                 </button>
                 <button
                   onClick={() => handleSave('published')}
-                  disabled={!selectedContact?.id || !selectedContact?.email || loading}
+                  disabled={!selectedContact?.id || !selectedContact?.email || loading || autoFitResult?.overflow}
                   className="flex-1 py-2.5 bg-indigo-650 hover:bg-indigo-650/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/20 transition-all"
                 >
                   Send Card Now
@@ -495,6 +629,7 @@ export default function GreetingWizard() {
           onDownload={handleDownload}
           onSend={() => handleSave('published')}
           isSaving={loading}
+          isOverflowed={Boolean(autoFitResult?.overflow)}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChevronDown, ChevronRight, User, Type, Palette,
-  Image as ImageIcon, Smile, Sticker, Sparkles, Search,
+  Image as ImageIcon, Smile, Sticker, Sparkles, Search, AlertTriangle,
 } from 'lucide-react';
 import FontSelector from './FontSelector';
 import BackgroundPicker from './BackgroundPicker';
@@ -11,6 +11,7 @@ import StickerPicker from './StickerPicker';
 import AIMessagePanel from './AIMessagePanel';
 import ContactSelector from '../../components/ContactSelector';
 import { GreetingCardData } from '../types';
+import { AutoFitResult } from '../utils/textMeasurement';
 
 // ─── Shared design tokens ──────────────────────────────────────────────────────
 const INPUT_CLS =
@@ -66,6 +67,7 @@ interface CustomizationPanelProps {
   contacts?: any[];
   selectedContact?: any;
   onSelectContact?: (contact: any) => void;
+  autoFitResult?: AutoFitResult;
 }
 
 export default function CustomizationPanel({
@@ -74,6 +76,7 @@ export default function CustomizationPanel({
   contacts = [],
   selectedContact,
   onSelectContact,
+  autoFitResult,
 }: CustomizationPanelProps) {
   const [openSection, setOpenSection] = useState<string>('contact');
 
@@ -157,8 +160,33 @@ export default function CustomizationPanel({
               placeholder="Write your heartfelt wishes here..."
               rows={4}
               maxLength={500}
-              className={INPUT_CLS}
+              className={`${INPUT_CLS} ${
+                autoFitResult?.overflow ? 'border-rose-500/80 focus:border-rose-500 focus:ring-rose-500/20' : ''
+              }`}
             />
+
+            {/* Auto-fit Feedback & Overflow Warnings */}
+            {autoFitResult?.overflow ? (
+              <div className="mt-2.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] space-y-2">
+                <div className="flex items-start gap-1.5 font-medium">
+                  <AlertTriangle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
+                  <span>Your message is too long for this card design. Please shorten the message or choose another template.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpenSection('ai')}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 rounded-lg text-[10px] font-bold transition-all"
+                >
+                  <Sparkles size={11} className="text-rose-300" />
+                  <span>✨ Shorten with AI Assistant</span>
+                </button>
+              </div>
+            ) : autoFitResult && autoFitResult.fittedFontSize < (cardData.font_size || 18) && cardData.personal_message ? (
+              <p className="mt-1.5 text-[10px] text-indigo-400/90 flex items-center gap-1">
+                <Sparkles size={11} className="text-indigo-400" />
+                <span>Auto-fit active: Font size adjusted to {autoFitResult.fittedFontSize}px to fit perfectly.</span>
+              </p>
+            ) : null}
           </div>
         </div>
       </AccordionSection>

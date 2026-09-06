@@ -1,0 +1,30 @@
+# =============================================================================
+# Auto-Wish AI — Frontend .dockerignore
+# =============================================================================
+
+# ── Node modules — re-installed inside the container by npm ci ───────────────
+node_modules/
+
+# ── Build output — generated inside container or by CI, not needed at build ──
+dist/
+build/
+.vite/
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*

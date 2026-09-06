@@ -132,7 +132,7 @@ def startup_validate() -> None:
 
     # 2. Groq
     groq_key = getattr(settings, "GROQ_API_KEY", "") or ""
-    groq_model = getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant")
+    groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
     if groq_key:
         masked = f"****{groq_key[-4:]}" if len(groq_key) >= 4 else "****"
         print(f"[STARTUP] Groq configured: key={masked}, model={groq_model} (FALLBACK 1 - OK)")
@@ -316,13 +316,15 @@ class OpenRouterService:
             logger.warning("[VALIDATION FAILED] Greeting contains template/placeholder text patterns")
             return False
 
-        # Validate valid end punctuation or emoji symbol
-        valid_endings = ('.', '!', '?', '"', "'", '\u201d', '\u2019', '😊', '🎉', '🎂', '✨', '💖', '❤️', '🌟', '🙏', '🌺')
-        if not text.rstrip().endswith(valid_endings):
-            last_char = text.rstrip()[-1] if text.rstrip() else ''
-            if last_char.isalnum() and len(text.split()) < 5:
-                logger.warning("[VALIDATION FAILED] Greeting ends abruptly without punctuation.")
-                return False
+        # Validate structure completeness (no unbalanced brackets)
+        if text.count('(') > text.count(')') or text.count('[') > text.count(']') or text.count('{') > text.count('}'):
+            logger.warning("[VALIDATION FAILED] Greeting contains unbalanced delimiters")
+            return False
+
+        stripped = text.rstrip()
+        if stripped.endswith(('(', '[', '{', '“', '‘')):
+            logger.warning("[VALIDATION FAILED] Greeting ends with opening delimiter")
+            return False
 
         return True
 

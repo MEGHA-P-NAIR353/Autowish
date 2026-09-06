@@ -95,26 +95,15 @@ export default function GreetingTemplates() {
     fetchTemplates();
   }, [fetchTemplates]);
 
-  const handleUseTemplate = async (template: CardTemplate) => {
+  const handleUseTemplate = (template: CardTemplate) => {
     try {
-      const res = await cardsAPI.create({
-        title: `Greeting Card (${template.title})`,
-        occasion: template.occasion,
-        card_size: 'instagram_square',
-        card_theme: 'dark',
-        card_width: template.card_width || 500,
-        card_height: template.card_height || 500,
-        background_color: template.background_color,
-        background_image: template.background_image_url || '',
-        font_family: template.font_family || 'Inter',
-        font_size: template.font_size || 16,
-        font_color: template.text_color || '#ffffff',
-        elements_json: JSON.stringify(template.elements_json || []),
-        status: 'draft',
-      });
-      toast.success('Template loaded! Opening editor...');
-      navigate(`/greeting-cards/create/${res.data.id}`);
-    } catch {
+      // Navigate directly to the editor with the template ID as a query param.
+      // GreetingWizard reads ?template=<id>, fetches the template via the
+      // card-templates API, and jumps straight to the Customize step.
+      // This approach is page-refresh-resilient and avoids creating orphaned drafts.
+      navigate(`/greeting-cards/create?template=${template.id}`);
+    } catch (error) {
+      console.error('Failed to initialize template editor', error, { templateId: template.id });
       toast.error('Could not initialize template editor');
     }
   };

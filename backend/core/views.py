@@ -1123,6 +1123,7 @@ def generate_ai_greeting(request):
             provider_used = ai_result.get("provider", "gemini")
             is_cached = ai_result.get("cached", False)
         except ValueError as e:
+            logger.warning("[AI_GREETING_VALUE_ERROR] user=%s: %s", request.user.id, e)
             return Response({'error': str(e)}, status=400)
         except AIValidationError as e:
             logger.warning(
@@ -1130,11 +1131,18 @@ def generate_ai_greeting(request):
                 "Returning retry signal to frontend. reason=%s", e.reason
             )
             return Response(e.to_dict(), status=503)
-        except RuntimeError as e:
-            logger.error(f"[AI_GREETING_RUNTIME_ERROR] {e}")
-            return Response({
-                'error': 'AI generation is temporarily unavailable. Please try again.'
-            }, status=500)
+        except Exception as e:
+            logger.exception(
+                "[AI_GREETING_ERROR] AI generation failed for user=%s recipient=%s occasion=%s: %s",
+                request.user.id, recipient_name, occasion, e
+            )
+            err_payload = {
+                'error': 'AI generation is temporarily unavailable. Please try again.',
+            }
+            if getattr(settings, 'DEBUG', False):
+                err_payload['details'] = str(e)
+                err_payload['exception_type'] = type(e).__name__
+            return Response(err_payload, status=500)
 
         if not greeting_text:
             logger.error("AI service returned empty response")

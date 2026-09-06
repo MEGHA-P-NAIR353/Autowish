@@ -25,6 +25,7 @@ from .providers.base import (
     ProviderAuthError,
     ProviderTimeoutError,
     ProviderRateLimitError,
+    ProviderModelNotFoundError,
     ProviderUnavailableError,
     ProviderResponseError,
 )
@@ -75,20 +76,23 @@ class ProviderManager:
 
     def _validate_response(self, text: str, recipient_name: Optional[str] = None) -> Tuple[bool, str]:
         """
-        Validate generated greeting quality and completeness:
-        1. Must be non-empty and have minimum meaningful content (>= 20 chars, >= 4 words).
+        Multilingual-safe validation for generated greeting quality and completeness:
+        1. Must be non-empty and have minimum meaningful content (>= 15 chars, >= 3 words).
         2. Must not contain reasoning/planning keywords.
         3. Must not contain template placeholders (e.g. 'Greeting + Name', 'Sentence 1').
         4. Must not contain leaked paragraph labels ('Paragraph 1:', '*Paragraph 2:*', etc.).
         5. Must not contain leaked word counts ('(19 words)', 'Word count: 43', etc.).
-        6. Must not end abruptly (must end with valid closing punctuation, quote, or emoji across all languages).
-        7. Must not end with trailing incomplete/dangling words ('a', 'the', 'with', 'and', etc.).
+        6. Must not have unbalanced delimiters or end with an opening delimiter '(', '[', '{'.
+        7. Must not end with trailing incomplete/dangling phrases ('feels like a', etc.).
+
+        DOES NOT reject valid responses merely because the final character is a Unicode letter
+        (Malayalam 'ൽ', Devanagari, Tamil, Arabic, etc.) or lacks ASCII punctuation.
         """
-        if not text or len(text.strip()) < 20:
+        if not text or len(text.strip()) < 15:
             return False, f"too_short_{len(text.strip()) if text else 0}_chars"
 
         words = text.strip().split()
-        if len(words) < 4:
+        if len(words) < 3:
             return False, f"too_few_words_{len(words)}"
 
         if contains_template_text(text):
@@ -113,46 +117,55 @@ class ProviderManager:
         if re.search(r'^\s*[\(\[\{]?\s*\d+\s*(?:/\s*\d+\s+)?words?\s*[\)\]\}]?\s*$', text, re.IGNORECASE | re.MULTILINE):
             return False, "leaked_word_count"
 
-        # Check ending completeness across languages
         stripped = text.rstrip()
         if not stripped:
             return False, "empty_after_strip"
 
-        last_char = stripped[-1]
-        last_cat = unicodedata.category(last_char)
+        # Check for unclosed opening brackets/delimiters
+        open_parens = text.count('(')
+        close_parens = text.count(')')
+        open_brackets = text.count('[')
+        close_brackets = text.count(']')
+        open_braces = text.count('{')
+        close_braces = text.count('}')
 
-        # Valid punctuation / quote / emoji categories:
-        # 'Po' (Punctuation, other), 'Pe' (Punctuation, close), 'Pf' (Punctuation, final quote),
-        # 'So' (Symbol, other / emojis), 'Sk' (Symbol, modifier)
-        explicit_valid_chars = (
-            '.', '!', '?', '"', "'",
-            '\u201d', '\u2019', '\u00bb', '\u201c', '\u2018',
-            '\u2026', '\u0964', '\u0965', '\u06d4', '\u3002', '\uff01', '\uff1f', '~'
-        )
+        if open_parens > close_parens or open_brackets > close_brackets or open_braces > close_braces:
+            return False, "unbalanced_delimiters"
 
-        is_valid_category = last_cat in ('Po', 'Pe', 'Pf', 'So', 'Sk')
-        is_explicit_valid = last_char in explicit_valid_chars
-        # Emoji code points range fallback
-        is_emoji_codepoint = (0x1F000 <= ord(last_char) <= 0x1FAFF) or (0x2600 <= ord(last_char) <= 0x27BF)
+        # Check if text ends abruptly with an opening delimiter
+        if stripped.endswith(('(', '[', '{', '“', '‘')):
+            return False, "ends_with_opening_delimiter"
 
-        has_valid_ending_char = is_valid_category or is_explicit_valid or is_emoji_codepoint
-
-        if not has_valid_ending_char:
-            return False, f"incomplete_ending_char_{repr(last_char)}_cat_{last_cat}"
-
-        # Check trailing dangling words (e.g. "feels like a", "filled with and")
+        # Check trailing dangling words (e.g. "feels like a")
         clean_last_word = re.sub(r'[^\w]', '', words[-1]).lower()
-        dangling_words = {
-            "a", "an", "the", "and", "or", "but", "with", "because",
-            "like", "of", "to", "in", "for", "is", "are", "was", "were"
-        }
-        # If the word before punctuation is an incomplete dangling word with no content after
         if len(words) >= 2:
             prev_word = re.sub(r'[^\w]', '', words[-2]).lower()
             if prev_word in {"feels"} and clean_last_word in {"like", "a"}:
                 return False, f"dangling_phrase_{prev_word}_{clean_last_word}"
 
         return True, "valid"
+
+    def _is_suspiciously_incomplete(self, result: Any, cleaned_text: str) -> Tuple[bool, str]:
+        """
+        Detect if response is suspiciously incomplete due to token exhaustion (MAX_TOKENS / LENGTH).
+        Evidence includes:
+        - Finish reason explicitly indicates token limit reached AND
+        - Text has unbalanced delimiters or ends with an open delimiter or is too short.
+        """
+        finish_reason = getattr(result, "finish_reason", None)
+        if not finish_reason:
+            return False, "ok"
+
+        finish_str = str(finish_reason).upper()
+        if "MAX_TOKENS" in finish_str or "LENGTH" in finish_str:
+            stripped = cleaned_text.rstrip()
+            if (cleaned_text.count('(') > cleaned_text.count(')') or
+                cleaned_text.count('[') > cleaned_text.count(']') or
+                cleaned_text.count('{') > cleaned_text.count('}') or
+                stripped.endswith(('(', '[', '{', '“', '‘', '...', '…')) or
+                len(cleaned_text.strip()) < 30):
+                return True, "max_tokens_truncated"
+        return False, "ok"
 
     def generate(
         self,
@@ -200,7 +213,7 @@ class ProviderManager:
 
         errors_summary = []
         start_overall = time.time()
-        MAX_ATTEMPTS_PER_PROVIDER = 2
+        gemini_max_retries = int(getattr(settings, "GEMINI_MAX_RETRIES", 1))
 
         for provider in self.providers:
             if not provider.is_configured():
@@ -217,98 +230,119 @@ class ProviderManager:
                 provider_name, model_name
             )
 
-            provider_succeeded = False
-            for attempt in range(1, MAX_ATTEMPTS_PER_PROVIDER + 1):
-                p_start = time.time()
-                if attempt > 1:
-                    logger.info(
-                        "[AI RETRY ATTEMPT] provider=%s attempt=%d/%d",
-                        provider_name, attempt, MAX_ATTEMPTS_PER_PROVIDER
-                    )
+            p_start = time.time()
+            try:
+                raw_result = provider.generate(
+                    prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    timeout=timeout,
+                )
 
-                try:
-                    raw_response = provider.generate(
-                        prompt,
-                        system_prompt=system_prompt,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                        top_p=top_p,
-                        timeout=timeout,
-                    )
-
-                    cleaned = clean_ai_response(raw_response)
+                # Extract text and metadata
+                if hasattr(raw_result, "text"):
+                    resp_text = raw_result.text
+                    used_model = getattr(raw_result, "model", model_name)
+                    elapsed_ms = getattr(raw_result, "latency_ms", round((time.time() - p_start) * 1000, 2))
+                else:
+                    resp_text = str(raw_result)
+                    used_model = model_name
                     elapsed_ms = round((time.time() - p_start) * 1000, 2)
 
-                    is_valid, validation_reason = self._validate_response(cleaned, recipient_name)
-                    if not is_valid:
-                        logger.warning(
-                            "[AI RESPONSE INVALID] provider=%s attempt=%d reason=%s",
-                            provider_name, attempt, validation_reason
+                cleaned = clean_ai_response(resp_text)
+
+                # Check if provider reported MAX_TOKENS and appears truncated
+                is_truncated, trunc_reason = self._is_suspiciously_incomplete(raw_result, cleaned)
+                if is_truncated and gemini_max_retries > 0:
+                    retry_tokens = max(max_tokens * 2, getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 1024) + 512)
+                    logger.warning(
+                        "[AI TRUNCATED RESPONSE RETRY] provider=%s reason=%s. Retrying once with max_tokens=%d...",
+                        provider_name, trunc_reason, retry_tokens
+                    )
+                    try:
+                        retry_result = provider.generate(
+                            prompt,
+                            system_prompt=system_prompt,
+                            max_tokens=retry_tokens,
+                            temperature=temperature,
+                            top_p=top_p,
+                            timeout=timeout,
                         )
-                        if attempt < MAX_ATTEMPTS_PER_PROVIDER:
-                            continue  # Retry with same provider
-                        else:
-                            errors_summary.append(f"{provider_name}: {validation_reason}")
-                            break  # Fall back to next provider
+                        retry_text = retry_result.text if hasattr(retry_result, "text") else str(retry_result)
+                        cleaned = clean_ai_response(retry_text)
+                        elapsed_ms = round((time.time() - p_start) * 1000, 2)
+                        raw_result = retry_result
+                    except Exception as retry_err:
+                        logger.warning("[AI RETRY FAILED] provider=%s retry failed: %s", provider_name, retry_err)
 
-                    logger.info(
-                        "[AI GENERATION SUCCESS] provider=%s succeeded in %.2fms (length: %d chars, words: %d)",
-                        provider_name, elapsed_ms, len(cleaned), len(cleaned.split())
-                    )
-
-                    # Store in cache if cache is enabled
-                    if use_cache and cache_key:
-                        AICacheService.set_cached_wish(cache_key, cleaned)
-
-                    return {
-                        "content": cleaned,
-                        "provider": provider_name,
-                        "cached": False,
-                        "latency_ms": elapsed_ms,
-                    }
-
-                except ProviderAuthError as e:
-                    logger.error("[AI PROVIDER AUTH ERROR] Provider %s: %s", provider_name, e)
-                    errors_summary.append(f"{provider_name}: auth_error")
-                    break  # Do not retry auth errors on same provider
-
-                except ProviderRateLimitError as e:
+                is_valid, validation_reason = self._validate_response(cleaned, recipient_name)
+                if not is_valid:
                     logger.warning(
-                        "[AI PROVIDER RATE LIMIT] Provider %s rate-limited. Falling back immediately...",
-                        provider_name
+                        "[AI RESPONSE INVALID] provider=%s reason=%s. Falling back to next provider...",
+                        provider_name, validation_reason
                     )
-                    errors_summary.append(f"{provider_name}: rate_limit")
-                    break  # Do not retry rate limit on same provider
+                    errors_summary.append(f"{provider_name}: {validation_reason}")
+                    continue
 
-                except ProviderTimeoutError as e:
-                    logger.warning(
-                        "[AI PROVIDER TIMEOUT] Provider %s timed out. Retrying or falling back...",
-                        provider_name
-                    )
-                    if attempt < MAX_ATTEMPTS_PER_PROVIDER:
-                        continue
-                    errors_summary.append(f"{provider_name}: timeout")
-                    break
+                logger.info(
+                    "[AI GENERATION SUCCESS] provider=%s model=%s succeeded in %.2fms (length: %d chars, words: %d)",
+                    provider_name, used_model, elapsed_ms, len(cleaned), len(cleaned.split())
+                )
 
-                except (ProviderUnavailableError, ProviderResponseError, AIProviderError) as e:
-                    logger.warning(
-                        "[AI PROVIDER ERROR] Provider %s attempt=%d failed: %s.",
-                        provider_name, attempt, e
-                    )
-                    if attempt < MAX_ATTEMPTS_PER_PROVIDER:
-                        continue
-                    errors_summary.append(f"{provider_name}: {type(e).__name__}")
-                    break
+                # Store in cache if cache is enabled
+                if use_cache and cache_key:
+                    AICacheService.set_cached_wish(cache_key, cleaned)
 
-                except Exception as e:
-                    logger.error(
-                        "[AI PROVIDER UNEXPECTED ERROR] Provider %s failed unexpectedly: %s",
-                        provider_name, e
-                    )
-                    if attempt < MAX_ATTEMPTS_PER_PROVIDER:
-                        continue
-                    errors_summary.append(f"{provider_name}: unexpected_error")
-                    break
+                return {
+                    "content": cleaned,
+                    "provider": provider_name,
+                    "cached": False,
+                    "latency_ms": elapsed_ms,
+                }
+
+            except ProviderAuthError as e:
+                logger.error("[AI PROVIDER AUTH ERROR] Provider %s: %s", provider_name, e)
+                errors_summary.append(f"{provider_name}: auth_error")
+                continue
+
+            except ProviderModelNotFoundError as e:
+                logger.warning("[AI PROVIDER MODEL NOT FOUND] Provider %s model unavailable: %s", provider_name, e)
+                errors_summary.append(f"{provider_name}: model_not_found")
+                continue
+
+            except ProviderRateLimitError as e:
+                logger.warning(
+                    "[AI PROVIDER RATE LIMIT] Provider %s rate-limited. Falling back immediately...",
+                    provider_name
+                )
+                errors_summary.append(f"{provider_name}: rate_limit")
+                continue
+
+            except ProviderTimeoutError as e:
+                logger.warning(
+                    "[AI PROVIDER TIMEOUT] Provider %s timed out. Falling back immediately...",
+                    provider_name
+                )
+                errors_summary.append(f"{provider_name}: timeout")
+                continue
+
+            except (ProviderUnavailableError, ProviderResponseError, AIProviderError) as e:
+                logger.warning(
+                    "[AI PROVIDER ERROR] Provider %s failed: %s. Falling back...",
+                    provider_name, e
+                )
+                errors_summary.append(f"{provider_name}: {type(e).__name__}")
+                continue
+
+            except Exception as e:
+                logger.error(
+                    "[AI PROVIDER UNEXPECTED ERROR] Provider %s failed unexpectedly: %s",
+                    provider_name, e
+                )
+                errors_summary.append(f"{provider_name}: unexpected_error")
+                continue
 
         total_elapsed = round((time.time() - start_overall) * 1000, 2)
         logger.error(
@@ -316,6 +350,7 @@ class ProviderManager:
             total_elapsed, ", ".join(errors_summary)
         )
         raise RuntimeError("AI generation is temporarily unavailable. All providers failed.")
+
 
 
 # Singleton default manager

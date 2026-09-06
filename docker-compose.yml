@@ -1,126 +1,212 @@
-version: '3.8'
+# =============================================================================
+# Auto-Wish AI — Docker Compose (Development)
+# =============================================================================
+#
+# QUICK START:
+#   1. copy .env.example .env      (Windows)
+#      cp   .env.example .env      (Linux / macOS)
+#   2. Edit .env — fill in SECRET_KEY, DB_PASSWORD, AI API keys, etc.
+#   3. docker compose up --build
+#
+# Services:
+#   frontend      → http://localhost:5173  (Vite dev server, hot-reload)
+#   backend       → http://localhost:8000  (Django + Gunicorn)
+#   postgres      → internal only          (PostgreSQL 15)
+#   redis         → internal only          (Redis 7)
+#   celery_worker → internal only          (Celery worker)
+#   celery_beat   → internal only          (Celery beat — scheduled tasks)
+#
+# Data persistence:
+#   postgres_data volume survives `docker compose down`
+#   To WIPE the database:  docker compose down -v
+#
+# =============================================================================
 
 services:
-  db:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
     image: postgres:15-alpine
-    container_name: autowish_db
+    container_name: autowish_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: autowish_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Megha123@
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Only expose to host for debugging (comment out in production)
+    ports:
+      - "5432:5432"
+    networks:
+      - autowish_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d autowish_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
+  # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: autowish_redis
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    # Only expose to host for debugging (comment out in production)
+    ports:
+      - "6379:6379"
+    networks:
+      - autowish_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
-  web:
+  # ── Backend (Django) ────────────────────────────────────────────────────────
+  backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: autowish_backend
-    command: gunicorn autowish.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    restart: unless-stopped
+    # entrypoint.sh waits for postgres+redis, runs migrations & collectstatic,
+    # then executes this command.
+    command: >
+      gunicorn autowish.wsgi:application
+        --bind 0.0.0.0:8000
+        --workers 3
+        --timeout 120
+        --access-logfile -
+        --error-logfile -
+    env_file:
+      - .env
+    environment:
+      # Entrypoint control — backend runs both migrations and collectstatic
+      RUN_MIGRATIONS: "true"
+      RUN_COLLECTSTATIC: "true"
     volumes:
+      # Mount source for live code reloading (remove in production)
       - ./backend:/app
+      # Named volumes keep static/media outside the container FS
       - static_volume:/app/staticfiles
       - media_volume:/app/media
-    environment:
-      - DEBUG=False
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=autowish_db
-      - DB_USER=postgres
-      - DB_PASSWORD=Megha123@
-      - DB_HOST=db
-      - DB_PORT=5432
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     ports:
       - "8000:8000"
+    networks:
+      - autowish_net
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+  # ── Celery Worker ───────────────────────────────────────────────────────────
   celery_worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: autowish_celery_worker
-    command: celery -A autowish worker --loglevel=info
+    restart: unless-stopped
+    command: celery -A autowish worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      # Workers don't need to run migrations or collectstatic
+      RUN_MIGRATIONS: "false"
+      RUN_COLLECTSTATIC: "false"
     volumes:
       - ./backend:/app
-    environment:
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=autowish_db
-      - DB_USER=postgres
-      - DB_PASSWORD=Megha123@
-      - DB_HOST=db
-      - DB_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - media_volume:/app/media
+    networks:
+      - autowish_net
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        condition: service_started
 
+  # ── Celery Beat (Scheduler) ─────────────────────────────────────────────────
+  # Uses django_celery_beat DatabaseScheduler — schedules stored in PostgreSQL.
+  # This handles the daily wish check task (core.tasks.check_daily_wishes_task).
   celery_beat:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: autowish_celery_beat
-    command: celery -A autowish beat --loglevel=info
+    restart: unless-stopped
+    command: >
+      celery -A autowish beat
+        --loglevel=info
+        --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - .env
+    environment:
+      # Beat doesn't run migrations; backend handles that
+      RUN_MIGRATIONS: "false"
+      RUN_COLLECTSTATIC: "false"
     volumes:
       - ./backend:/app
-    environment:
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=autowish_db
-      - DB_USER=postgres
-      - DB_PASSWORD=Megha123@
-      - DB_HOST=db
-      - DB_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - autowish_net
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        condition: service_started
 
-  nginx:
-    image: nginx:alpine
-    container_name: autowish_nginx
-    ports:
-      - "80:80"
+  # ── Frontend (React / Vite dev server) ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: autowish_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Vite proxy: /api/* → http://backend:8000/api/*
+      # This must be the Docker service name, NOT localhost.
+      VITE_API_PROXY_TARGET: "http://backend:8000"
+      VITE_API_URL: "/api"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
-      - static_volume:/app/staticfiles:ro
-      - media_volume:/app/media:ro
+      # Mount source for hot-reload; node_modules stays inside the container
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    networks:
+      - autowish_net
     depends_on:
-      - web
+      - backend
 
+# =============================================================================
+# Named Volumes
+# =============================================================================
 volumes:
   postgres_data:
+    name: autowish_postgres_data
   redis_data:
+    name: autowish_redis_data
   static_volume:
+    name: autowish_static
   media_volume:
+    name: autowish_media
+  frontend_node_modules:
+    name: autowish_frontend_node_modules
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  autowish_net:
+    name: autowish_network
+    driver: bridge

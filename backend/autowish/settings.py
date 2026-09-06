@@ -3,9 +3,10 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Explicitly load .env from BASE_DIR
+load_dotenv(BASE_DIR / '.env')
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-prod')
 
@@ -250,3 +251,25 @@ LOGGING = {
         },
     },
 }
+
+# ==============================================================================
+# AI Multi-Provider Configuration (Primary: Gemini -> Fallback 1: Groq -> Fallback 2: OpenRouter)
+# ==============================================================================
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash').strip() or 'gemini-3.6-flash'
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_MAX_OUTPUT_TOKENS', '1024'))
+GEMINI_MAX_RETRIES = int(os.getenv('GEMINI_MAX_RETRIES', '1'))
+
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip()
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip() or 'llama-3.3-70b-versatile'
+GROQ_FALLBACK_MODELS = os.getenv('GROQ_FALLBACK_MODELS', 'llama-3.3-70b-versatile,llama-3.1-8b-instant,gemma2-9b-it').strip()
+
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free').strip() or 'meta-llama/llama-3.3-70b-instruct:free'
+OPENROUTER_FALLBACK_MODELS = os.getenv('OPENROUTER_FALLBACK_MODELS', 'meta-llama/llama-3.3-70b-instruct:free,google/gemini-2.0-flash-exp:free,mistralai/mistral-7b-instruct:free,qwen/qwen-2.5-72b-instruct:free').strip()
+OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1').strip()
+
+AI_PROVIDER_TIMEOUT = float(os.getenv('AI_PROVIDER_TIMEOUT', '15.0'))
+AI_CACHE_TTL = int(os.getenv('AI_CACHE_TTL', '86400'))
+
+
