@@ -50,6 +50,7 @@ from services.ai import (
     LANGUAGE_MAP,
     AIValidationError,
 )
+from services.fallback_wishes import generate_fallback_wish
 from services.ai.openrouter_service import (
     generate_text as openrouter_generate,
     masked_key as openrouter_masked_key,
@@ -1105,6 +1106,8 @@ def generate_ai_greeting(request):
             f"occasion={occasion}, tone={tone}, language={language}, mode={mode}, force_regenerate={force_regenerate}"
         )
 
+        # ── AI generation with graceful fallback ────────────────────────────
+        is_fallback = False
         try:
             ai_result = generate_ai_wish(
                 recipient_name=recipient_name,
@@ -1122,33 +1125,63 @@ def generate_ai_greeting(request):
             greeting_text = ai_result.get("content", "")
             provider_used = ai_result.get("provider", "gemini")
             is_cached = ai_result.get("cached", False)
+
+            # If AI returned an empty string, treat as failure and use fallback
+            if not greeting_text or not greeting_text.strip():
+                logger.warning(
+                    "[AI_GREETING_EMPTY] AI provider=%s returned empty content. "
+                    "Activating fallback for user=%s.",
+                    provider_used, request.user.id
+                )
+                raise RuntimeError("AI provider returned empty content")
+
         except ValueError as e:
+            # Validation errors from the request itself — return 400 (not fallback)
             logger.warning("[AI_GREETING_VALUE_ERROR] user=%s: %s", request.user.id, e)
             return Response({'error': str(e)}, status=400)
-        except AIValidationError as e:
-            logger.warning(
-                "[AI_GREETING_VALIDATION_FAIL] All models failed quality validation. "
-                "Returning retry signal to frontend. reason=%s", e.reason
-            )
-            return Response(e.to_dict(), status=503)
-        except Exception as e:
-            logger.exception(
-                "[AI_GREETING_ERROR] AI generation failed for user=%s recipient=%s occasion=%s: %s",
-                request.user.id, recipient_name, occasion, e
-            )
-            err_payload = {
-                'error': 'AI generation is temporarily unavailable. Please try again.',
-            }
-            if getattr(settings, 'DEBUG', False):
-                err_payload['details'] = str(e)
-                err_payload['exception_type'] = type(e).__name__
-            return Response(err_payload, status=500)
 
-        if not greeting_text:
-            logger.error("AI service returned empty response")
-            return Response({
-                'error': 'AI service returned an empty response. Please try again.'
-            }, status=500)
+        except AIValidationError as e:
+            # Quality validation failure — activate fallback instead of 503
+            logger.warning(
+                "[AI_GREETING_QUALITY_FAIL] All models failed quality validation. "
+                "Activating fallback. user=%s reason=%s",
+                request.user.id, e.reason
+            )
+            fallback_result = generate_fallback_wish(
+                recipient_name=recipient_name,
+                occasion=occasion,
+                tone=tone,
+                language=language,
+                relationship=relationship,
+                failure_reason=f"ai_quality_validation: {e.reason}",
+                user_id=request.user.id,
+            )
+            greeting_text = fallback_result["content"]
+            provider_used = fallback_result["provider"]
+            is_cached = False
+            is_fallback = True
+
+        except Exception as e:
+            # Any other AI failure (timeout, rate-limit, all providers down, etc.)
+            failure_reason = type(e).__name__
+            logger.exception(
+                "[AI_GREETING_ERROR] AI generation failed for user=%s recipient=%s "
+                "occasion=%s error_type=%s — activating fallback.",
+                request.user.id, recipient_name, occasion, failure_reason
+            )
+            fallback_result = generate_fallback_wish(
+                recipient_name=recipient_name,
+                occasion=occasion,
+                tone=tone,
+                language=language,
+                relationship=relationship,
+                failure_reason=failure_reason,
+                user_id=request.user.id,
+            )
+            greeting_text = fallback_result["content"]
+            provider_used = fallback_result["provider"]
+            is_cached = False
+            is_fallback = True
 
         # Save to GeneratedGreeting
         greeting = GeneratedGreeting.objects.create(
@@ -1164,7 +1197,13 @@ def generate_ai_greeting(request):
             action_type='AI_GREETING_GENERATED',
             title=f"AI greeting generated for {recipient_name}",
             entity_type='generated_greeting',
-            metadata={'recipient_name': recipient_name, 'occasion': occasion, 'provider': provider_used, 'cached': is_cached}
+            metadata={
+                'recipient_name': recipient_name,
+                'occasion': occasion,
+                'provider': provider_used,
+                'cached': is_cached,
+                'is_fallback': is_fallback,  # internal observability; not sent to client
+            }
         )
 
         return Response({

@@ -45,10 +45,11 @@ _client_instance: Optional[OpenAI] = None
 
 # Fallback models configuration order
 DEFAULT_MODEL_FALLBACKS = [
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "minimax/minimax-m3:free",
     "google/gemma-4-26b-a4b-it:free",
-    "deepseek/deepseek-chat-v3:free",
-    "qwen/qwen3:free",
-    "nvidia/nemotron-3-super:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3.5-lightning:free",
 ]
 
 
@@ -81,6 +82,7 @@ def get_openrouter_client() -> OpenAI:
             api_key=api_key,
             base_url=base_url,
             http_client=http_client,
+            max_retries=0,
         )
     return _client_instance
 
@@ -98,7 +100,7 @@ def get_api_key() -> str:
 
 def get_configured_model() -> str:
     """Return primary model from settings or env."""
-    return getattr(settings, "OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free") or "google/gemma-4-26b-a4b-it:free"
+    return getattr(settings, "OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free") or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 
 
 def get_fallback_models() -> List[str]:
@@ -123,7 +125,7 @@ def startup_validate() -> None:
     """Validate startup config for all AI providers without making network calls or leaking secrets."""
     # 1. Gemini
     gemini_key = getattr(settings, "GEMINI_API_KEY", "") or ""
-    gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
+    gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-3.7-flash")
     if gemini_key:
         masked = f"****{gemini_key[-4:]}" if len(gemini_key) >= 4 else "****"
         print(f"[STARTUP] Gemini configured: key={masked}, model={gemini_model} (PRIMARY - OK)")
@@ -132,7 +134,7 @@ def startup_validate() -> None:
 
     # 2. Groq
     groq_key = getattr(settings, "GROQ_API_KEY", "") or ""
-    groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_model = getattr(settings, "GROQ_MODEL", "openai/gpt-oss-120b")
     if groq_key:
         masked = f"****{groq_key[-4:]}" if len(groq_key) >= 4 else "****"
         print(f"[STARTUP] Groq configured: key={masked}, model={groq_model} (FALLBACK 1 - OK)")

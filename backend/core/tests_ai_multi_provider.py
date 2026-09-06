@@ -453,28 +453,33 @@ class ProviderModelFailoverUnitTests(TestCase):
         self.assertEqual(mock_client.chat.completions.create.call_count, 2)
 
 
-@override_settings(CACHES=TEST_CACHES)
+@override_settings(CACHES=TEST_CACHES, ALLOWED_HOSTS=["*", "testserver", "localhost", "127.0.0.1"])
 class APIEndpointIntegrationTests(TestCase):
 
     def setUp(self):
         cache.clear()
         self.client = APIClient()
-        self.user = User.objects.create_user(
-            username="testuser",
-            email="test@example.com",
-            password="testpassword123",
-            first_name="Test"
+        self.user, _ = User.objects.get_or_create(
+            username="testuser_multiprov",
+            defaults={
+                "email": "test@example.com",
+                "first_name": "Test"
+            }
         )
         self.client.force_authenticate(user=self.user)
-        self.contact = Contact.objects.create(
+        self.contact, _ = Contact.objects.get_or_create(
             user=self.user,
             name="Rahul Sharma",
-            relationship="Friend",
-            email="rahul@example.com"
+            defaults={
+                "relationship": "Friend",
+                "email": "rahul@example.com"
+            }
         )
 
     def tearDown(self):
         cache.clear()
+        Contact.objects.filter(user=self.user).delete()
+        User.objects.filter(username="testuser_multiprov").delete()
 
     # ── Test 17: Existing AI API Endpoint Compatibility ────────────────────────
     @patch("services.ai.provider_manager.get_provider_manager")
@@ -509,8 +514,8 @@ class APIEndpointIntegrationTests(TestCase):
         self.assertTrue(GeneratedGreeting.objects.filter(id=data["id"]).exists())
 
     @patch("services.ai.provider_manager.get_provider_manager")
-    def test_ai_generate_endpoint_all_fail_clean_error(self, mock_get_manager):
-        """When AI providers fail, endpoint returns clean 500 without leaking stack traces or keys."""
+    def test_ai_generate_endpoint_all_fail_activates_fallback(self, mock_get_manager):
+        """When AI providers fail, endpoint gracefully returns a high-quality fallback greeting with HTTP 200."""
         mock_mgr = MagicMock()
         mock_mgr.generate.side_effect = RuntimeError("AI generation is temporarily unavailable. All providers failed.")
         mock_get_manager.return_value = mock_mgr
@@ -523,11 +528,13 @@ class APIEndpointIntegrationTests(TestCase):
         }
 
         response = self.client.post("/api/ai/generate/", payload, format="json")
-        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
-        self.assertIn("error", data)
-        self.assertEqual(data["error"], "AI generation is temporarily unavailable. Please try again.")
-        # Ensure no tracebacks or keys in response
+        self.assertIn("id", data)
+        self.assertIn("greeting", data)
+        self.assertEqual(data["recipient"], "Rahul Sharma")
+        self.assertEqual(data["provider"], "fallback")
+        self.assertIn("Rahul", data["greeting"])
         self.assertNotIn("Traceback", str(data))
         self.assertNotIn("API_KEY", str(data))
 

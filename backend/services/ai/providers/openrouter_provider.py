@@ -34,10 +34,11 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_OPENROUTER_FALLBACKS = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-7b-instruct:free",
-    "qwen/qwen-2.5-72b-instruct:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "minimax/minimax-m3:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3.5-lightning:free",
 ]
 
 
@@ -58,7 +59,7 @@ class OpenRouterProvider(BaseAIProvider):
         return getattr(settings, "OPENROUTER_API_KEY", "") or ""
 
     def get_model_name(self) -> str:
-        return getattr(settings, "OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free") or "meta-llama/llama-3.3-70b-instruct:free"
+        return getattr(settings, "OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free") or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 
     def is_configured(self) -> bool:
         return bool(self.get_api_key().strip())
@@ -79,6 +80,7 @@ class OpenRouterProvider(BaseAIProvider):
             api_key=api_key,
             base_url=base_url,
             http_client=http_client,
+            max_retries=0,
         )
 
     def get_models_list(self) -> List[str]:

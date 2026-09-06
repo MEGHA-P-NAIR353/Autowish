@@ -133,19 +133,6 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
 
-# Multi-Provider AI Configuration
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash')
-
-GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
-GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')
-
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'nvidia/nemotron-3-super:free')
-OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
-
-AI_CACHE_TTL = int(os.getenv('AI_CACHE_TTL', 86400))  # 24 hours default
-AI_PROVIDER_TIMEOUT = float(os.getenv('AI_PROVIDER_TIMEOUT', 10.0))  # 10.0 seconds default
 
 # Redis & Cache Configuration
 REDIS_URL = os.getenv('REDIS_URL', os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0'))
@@ -256,22 +243,19 @@ LOGGING = {
 # AI Multi-Provider Configuration (Primary: Gemini -> Fallback 1: Groq -> Fallback 2: OpenRouter)
 # ==============================================================================
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash').strip() or 'gemini-3.6-flash'
-# gemini-3.6-flash is a THINKING model: thoughts_token_count consumes ~400-700 tokens
-# before the actual response is written. GEMINI_MAX_OUTPUT_TOKENS MUST be large enough
-# to cover both thinking overhead AND the actual greeting content.
-# Formula: ~500-700 (thinking) + ~150-300 (greeting) = 800-1000 minimum -> use 2048 safely.
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.7-flash').strip() or 'gemini-3.7-flash'
+GEMINI_FALLBACK_MODELS = os.getenv('GEMINI_FALLBACK_MODELS', 'gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash,gemini-3.6-flash').strip()
 GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_MAX_OUTPUT_TOKENS', '2048'))
 GEMINI_RETRY_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_RETRY_MAX_OUTPUT_TOKENS', '3072'))
 GEMINI_MAX_TRUNCATION_RETRIES = int(os.getenv('GEMINI_MAX_TRUNCATION_RETRIES', '1'))
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip()
-GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip() or 'llama-3.3-70b-versatile'
-GROQ_FALLBACK_MODELS = os.getenv('GROQ_FALLBACK_MODELS', 'llama-3.3-70b-versatile,llama-3.1-8b-instant,gemma2-9b-it').strip()
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b').strip() or 'openai/gpt-oss-120b'
+GROQ_FALLBACK_MODELS = os.getenv('GROQ_FALLBACK_MODELS', 'openai/gpt-oss-120b,qwen/qwen3.8-27b,groq/compound-mini,openai/gpt-oss-20b,qwen/qwen3.6-27b').strip()
 
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free').strip() or 'meta-llama/llama-3.3-70b-instruct:free'
-OPENROUTER_FALLBACK_MODELS = os.getenv('OPENROUTER_FALLBACK_MODELS', 'meta-llama/llama-3.3-70b-instruct:free,google/gemini-2.0-flash-exp:free,mistralai/mistral-7b-instruct:free,qwen/qwen-2.5-72b-instruct:free').strip()
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free').strip() or 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+OPENROUTER_FALLBACK_MODELS = os.getenv('OPENROUTER_FALLBACK_MODELS', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,minimax/minimax-m3:free,google/gemma-4-26b-a4b-it:free,liquid/lfm-2.5-2.6b:free,nvidia/nemotron-3.5-lightning:free').strip()
 OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1').strip()
 
 AI_PROVIDER_TIMEOUT = float(os.getenv('AI_PROVIDER_TIMEOUT', '15.0'))

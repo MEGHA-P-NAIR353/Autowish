@@ -7,7 +7,7 @@ Handles high-speed free-tier and reasoning models (gemini-3.6-flash).
 
 import time
 import logging
-from typing import Optional
+from typing import Optional, List
 from django.conf import settings
 from google import genai
 from google.genai import types
@@ -27,6 +27,14 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_GEMINI_FALLBACK_MODELS = [
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+]
+
+
 class GeminiProvider(BaseAIProvider):
     """
     Primary AI Provider leveraging the official Google Gemini SDK.
@@ -44,7 +52,7 @@ class GeminiProvider(BaseAIProvider):
         return getattr(settings, "GEMINI_API_KEY", "") or ""
 
     def get_model_name(self) -> str:
-        return getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash") or "gemini-3.6-flash"
+        return getattr(settings, "GEMINI_MODEL", "gemini-3.7-flash") or "gemini-3.7-flash"
 
     def is_configured(self) -> bool:
         return bool(self.get_api_key().strip())
@@ -63,6 +71,24 @@ class GeminiProvider(BaseAIProvider):
             self._client = genai.Client(api_key=api_key)
         return self._client
 
+    def get_models_list(self) -> List[str]:
+        primary = self.get_model_name()
+        models = [primary]
+
+        configured_fallbacks = getattr(settings, "GEMINI_FALLBACK_MODELS", None)
+        if configured_fallbacks:
+            if isinstance(configured_fallbacks, str):
+                fallback_list = [m.strip() for m in configured_fallbacks.split(",") if m.strip()]
+            else:
+                fallback_list = list(configured_fallbacks)
+        else:
+            fallback_list = DEFAULT_GEMINI_FALLBACK_MODELS
+
+        for m in fallback_list:
+            if m not in models:
+                models.append(m)
+        return models
+
     def generate(
         self,
         prompt: str,
@@ -76,14 +102,13 @@ class GeminiProvider(BaseAIProvider):
         if not self.is_configured():
             raise ProviderAuthError("Gemini API key is not configured.", provider=self.name)
 
-        model_name = self.get_model_name()
         default_timeout = getattr(settings, "AI_PROVIDER_TIMEOUT", 15.0)
         effective_timeout = timeout or default_timeout
 
         client = self._get_client()
 
         # Configurable maximum output tokens ceiling
-        configured_max_tokens = int(getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 512))
+        configured_max_tokens = int(getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 2048))
         effective_max_tokens = max_tokens if max_tokens is not None else configured_max_tokens
 
         # Build clean generation config without function calling tools
@@ -95,94 +120,128 @@ class GeminiProvider(BaseAIProvider):
             tools=None,
         )
 
-        start_time = time.time()
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
-            )
+        models = self.get_models_list()
+        last_exc: Optional[Exception] = None
+        has_rate_limit = False
+        has_not_found = False
 
-            elapsed_ms = round((time.time() - start_time) * 1000, 2)
-
-            # Safely extract candidate finish reason
-            candidate = response.candidates[0] if (response and getattr(response, "candidates", None)) else None
-            finish_reason_raw = getattr(candidate, "finish_reason", None) if candidate else None
-            finish_reason_str = str(finish_reason_raw).upper() if finish_reason_raw is not None else "STOP"
-            if "MAX_TOKENS" in finish_reason_str:
-                finish_reason_str = "MAX_TOKENS"
-            elif "STOP" in finish_reason_str:
-                finish_reason_str = "STOP"
-            elif "SAFETY" in finish_reason_str:
-                finish_reason_str = "SAFETY"
-
-            # Safely extract usage metadata
-            usage = getattr(response, "usage_metadata", None)
-            prompt_tokens = getattr(usage, "prompt_token_count", None) if usage else None
-            candidate_tokens = getattr(usage, "candidates_token_count", None) if usage else None
-            total_tokens = (prompt_tokens or 0) + (candidate_tokens or 0) if (prompt_tokens or candidate_tokens) else None
-
-            resp_text = (response.text or "").strip() if response else ""
-            words_count = len(resp_text.split()) if resp_text else 0
-            chars_count = len(resp_text)
-
-            logger.info(
-                "[GEMINI AI RESPONSE] provider=%s model=%s finish_reason=%s prompt_tokens=%s candidate_tokens=%s words=%d chars=%d latency_ms=%.2f",
-                self.name, model_name, finish_reason_str, prompt_tokens, candidate_tokens, words_count, chars_count, elapsed_ms
-            )
-
-            if not resp_text:
-                raise ProviderResponseError(
-                    f"Gemini returned an empty response text (finish_reason={finish_reason_str}).",
-                    provider=self.name
+        for model_name in models:
+            start_time = time.time()
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
                 )
 
-            return ProviderResult(
-                provider=self.name,
-                model=model_name,
-                text=resp_text,
-                finish_reason=finish_reason_str,
-                success=True,
-                retryable=(finish_reason_str == "MAX_TOKENS"),
-                token_usage={
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": candidate_tokens,
-                    "total_tokens": total_tokens,
-                },
-                latency_ms=elapsed_ms,
-            )
+                elapsed_ms = round((time.time() - start_time) * 1000, 2)
 
-        except (ClientError, APIError) as e:
-            elapsed_ms = round((time.time() - start_time) * 1000, 2)
-            err_msg = str(e).lower()
-            code = getattr(e, "code", None)
-            if code == 404 or "not found" in err_msg or "no longer available" in err_msg:
-                logger.error("[GEMINI MODEL NOT FOUND] Model %s is not available or deprecated: %s", model_name, e)
-                raise ProviderModelNotFoundError(f"Gemini model '{model_name}' not found: {e}", provider=self.name, details=e)
-            elif code == 401 or code == 403 or "invalid api key" in err_msg or "permission" in err_msg or "unauthenticated" in err_msg:
-                logger.error("[GEMINI AUTH ERROR] API key is invalid or unauthorized: %s", e)
-                raise ProviderAuthError(f"Gemini authentication failed: {e}", provider=self.name, details=e)
-            elif code == 429 or "resource_exhausted" in err_msg or "quota" in err_msg or "rate limit" in err_msg:
-                logger.warning("[GEMINI RATE LIMIT] Quota or rate limit exceeded: %s", e)
-                raise ProviderRateLimitError(f"Gemini quota / rate limit reached: {e}", provider=self.name, details=e)
-            elif "deadline" in err_msg or "timeout" in err_msg:
-                raise ProviderTimeoutError(f"Gemini request timed out: {e}", provider=self.name, details=e)
-            else:
-                raise ProviderUnavailableError(f"Gemini API error ({code}): {e}", provider=self.name, details=e)
+                # Safely extract candidate finish reason
+                candidate = response.candidates[0] if (response and getattr(response, "candidates", None)) else None
+                finish_reason_raw = getattr(candidate, "finish_reason", None) if candidate else None
+                finish_reason_str = str(finish_reason_raw).upper() if finish_reason_raw is not None else "STOP"
+                if "MAX_TOKENS" in finish_reason_str:
+                    finish_reason_str = "MAX_TOKENS"
+                elif "STOP" in finish_reason_str:
+                    finish_reason_str = "STOP"
+                elif "SAFETY" in finish_reason_str:
+                    finish_reason_str = "SAFETY"
 
-        except TimeoutError as e:
-            raise ProviderTimeoutError(f"Gemini request timed out after {effective_timeout}s: {e}", provider=self.name, details=e)
+                # Safely extract usage metadata
+                usage = getattr(response, "usage_metadata", None)
+                prompt_tokens = getattr(usage, "prompt_token_count", None) if usage else None
+                candidate_tokens = getattr(usage, "candidates_token_count", None) if usage else None
+                total_tokens = (prompt_tokens or 0) + (candidate_tokens or 0) if (prompt_tokens or candidate_tokens) else None
 
-        except (ProviderAuthError, ProviderModelNotFoundError, ProviderRateLimitError, ProviderTimeoutError, ProviderResponseError, ProviderUnavailableError):
-            raise
+                resp_text = (response.text or "").strip() if response else ""
+                words_count = len(resp_text.split()) if resp_text else 0
+                chars_count = len(resp_text)
 
-        except Exception as e:
-            err_str = str(e).lower()
-            if "not found" in err_str or "404" in err_str:
-                raise ProviderModelNotFoundError(f"Gemini model '{model_name}' not found: {e}", provider=self.name, details=e)
-            if "timeout" in err_str or "timed out" in err_str:
-                raise ProviderTimeoutError(f"Gemini connection timed out: {e}", provider=self.name, details=e)
-            if "rate limit" in err_str or "429" in err_str or "quota" in err_str:
-                raise ProviderRateLimitError(f"Gemini rate limit: {e}", provider=self.name, details=e)
-            raise ProviderUnavailableError(f"Gemini unexpected failure: {e}", provider=self.name, details=e)
+                logger.info(
+                    "[GEMINI AI RESPONSE] provider=%s model=%s finish_reason=%s prompt_tokens=%s candidate_tokens=%s words=%d chars=%d latency_ms=%.2f",
+                    self.name, model_name, finish_reason_str, prompt_tokens, candidate_tokens, words_count, chars_count, elapsed_ms
+                )
+
+                if not resp_text:
+                    raise ProviderResponseError(
+                        f"Gemini returned an empty response text (finish_reason={finish_reason_str}).",
+                        provider=self.name
+                    )
+
+                return ProviderResult(
+                    provider=self.name,
+                    model=model_name,
+                    text=resp_text,
+                    finish_reason=finish_reason_str,
+                    success=True,
+                    retryable=(finish_reason_str == "MAX_TOKENS"),
+                    token_usage={
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": candidate_tokens,
+                        "total_tokens": total_tokens,
+                    },
+                    latency_ms=elapsed_ms,
+                )
+
+            except (ClientError, APIError) as e:
+                elapsed_ms = round((time.time() - start_time) * 1000, 2)
+                err_msg = str(e).lower()
+                code = getattr(e, "code", None)
+                if code == 401 or code == 403 or "invalid api key" in err_msg or "permission" in err_msg or "unauthenticated" in err_msg:
+                    logger.error("[GEMINI AUTH ERROR] API key is invalid or unauthorized: %s", e)
+                    raise ProviderAuthError(f"Gemini authentication failed: {e}", provider=self.name, details=e)
+                elif code == 404 or "not found" in err_msg or "no longer available" in err_msg:
+                    logger.warning("[GEMINI MODEL NOT FOUND] Model %s is not available: %s. Skipping to next model...", model_name, e)
+                    has_not_found = True
+                    last_exc = e
+                    continue
+                elif code == 429 or "resource_exhausted" in err_msg or "quota" in err_msg or "rate limit" in err_msg:
+                    logger.warning("[GEMINI RATE LIMIT] model=%s Quota or rate limit exceeded: %s. Skipping to next model...", model_name, e)
+                    has_rate_limit = True
+                    last_exc = e
+                    continue
+                elif "deadline" in err_msg or "timeout" in err_msg:
+                    logger.warning("[GEMINI TIMEOUT] model=%s timed out: %s. Skipping to next model...", model_name, e)
+                    last_exc = e
+                    continue
+                elif code == 503 or "unavailable" in err_msg:
+                    logger.warning("[GEMINI SERVICE UNAVAILABLE] model=%s 503: %s. Skipping to next model...", model_name, e)
+                    last_exc = e
+                    continue
+                else:
+                    logger.warning("[GEMINI API ERROR] model=%s code=%s: %s. Skipping to next model...", model_name, code, e)
+                    last_exc = e
+                    continue
+
+            except TimeoutError as e:
+                logger.warning("[GEMINI TIMEOUT] model=%s timed out after %ss: %s", model_name, effective_timeout, e)
+                last_exc = e
+                continue
+
+            except ProviderResponseError as e:
+                logger.warning("[GEMINI RESPONSE ERROR] model=%s: %s", model_name, e)
+                last_exc = e
+                continue
+
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not found" in err_str or "404" in err_str:
+                    has_not_found = True
+                    logger.warning("[GEMINI MODEL NOT FOUND] model=%s: %s", model_name, e)
+                elif "rate limit" in err_str or "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                    has_rate_limit = True
+                    logger.warning("[GEMINI RATE LIMIT] model=%s: %s", model_name, e)
+                else:
+                    logger.warning("[GEMINI UNEXPECTED ERROR] model=%s: %s", model_name, e)
+                last_exc = e
+                continue
+
+        if has_rate_limit or (last_exc and "429" in str(last_exc)):
+            raise ProviderRateLimitError(f"All Gemini models rate limited or quota exceeded: {last_exc}", provider=self.name, details=last_exc)
+        if has_not_found and not last_exc:
+            raise ProviderModelNotFoundError(f"All Gemini models not found or unavailable: {last_exc}", provider=self.name, details=last_exc)
+        if isinstance(last_exc, TimeoutError):
+            raise ProviderTimeoutError(f"Gemini request timed out after {effective_timeout}s: {last_exc}", provider=self.name, details=last_exc)
+
+        raise ProviderUnavailableError(f"Gemini provider error: {last_exc}", provider=self.name, details=last_exc)
 

@@ -32,9 +32,11 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_GROQ_FALLBACK_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "gemma2-9b-it",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "groq/compound-mini",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
 ]
 
 
@@ -55,7 +57,7 @@ class GroqProvider(BaseAIProvider):
         return getattr(settings, "GROQ_API_KEY", "") or ""
 
     def get_model_name(self) -> str:
-        return getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+        return getattr(settings, "GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b"
 
     def is_configured(self) -> bool:
         return bool(self.get_api_key().strip())
@@ -70,7 +72,7 @@ class GroqProvider(BaseAIProvider):
         api_key = self.get_api_key().strip()
         if not api_key:
             raise ProviderAuthError("GROQ_API_KEY is not configured.", provider=self.name)
-        return Groq(api_key=api_key, timeout=timeout)
+        return Groq(api_key=api_key, timeout=timeout, max_retries=0)
 
     def get_models_list(self) -> List[str]:
         primary = self.get_model_name()
