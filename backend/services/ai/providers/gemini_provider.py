@@ -83,8 +83,8 @@ class GeminiProvider(BaseAIProvider):
         client = self._get_client()
 
         # Configurable maximum output tokens ceiling
-        configured_max_tokens = getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 1024)
-        effective_max_tokens = max(configured_max_tokens, max_tokens)
+        configured_max_tokens = int(getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 512))
+        effective_max_tokens = max_tokens if max_tokens is not None else configured_max_tokens
 
         # Build clean generation config without function calling tools
         config = types.GenerateContentConfig(

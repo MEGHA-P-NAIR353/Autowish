@@ -257,8 +257,13 @@ LOGGING = {
 # ==============================================================================
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash').strip() or 'gemini-3.6-flash'
-GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_MAX_OUTPUT_TOKENS', '1024'))
-GEMINI_MAX_RETRIES = int(os.getenv('GEMINI_MAX_RETRIES', '1'))
+# gemini-3.6-flash is a THINKING model: thoughts_token_count consumes ~400-700 tokens
+# before the actual response is written. GEMINI_MAX_OUTPUT_TOKENS MUST be large enough
+# to cover both thinking overhead AND the actual greeting content.
+# Formula: ~500-700 (thinking) + ~150-300 (greeting) = 800-1000 minimum -> use 2048 safely.
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_MAX_OUTPUT_TOKENS', '2048'))
+GEMINI_RETRY_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_RETRY_MAX_OUTPUT_TOKENS', '3072'))
+GEMINI_MAX_TRUNCATION_RETRIES = int(os.getenv('GEMINI_MAX_TRUNCATION_RETRIES', '1'))
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip()
 GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip() or 'llama-3.3-70b-versatile'

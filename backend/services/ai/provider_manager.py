@@ -147,25 +147,63 @@ class ProviderManager:
 
     def _is_suspiciously_incomplete(self, result: Any, cleaned_text: str) -> Tuple[bool, str]:
         """
-        Detect if response is suspiciously incomplete due to token exhaustion (MAX_TOKENS / LENGTH).
-        Evidence includes:
-        - Finish reason explicitly indicates token limit reached AND
-        - Text has unbalanced delimiters or ends with an open delimiter or is too short.
+        Multilingual-safe completeness check.
+        PRIMARY SIGNAL: finish_reason == 'MAX_TOKENS'
+        SECONDARY SIGNALS:
+        - Unbalanced opening delimiters: '(', '[', '{'
+        - Ends with open delimiter: '(', '[', '{', '“', '‘'
+        - Ends with trailing ellipsis: '...', '…'
+        - Ends with trailing continuation punctuation: ',', '-', '—', ':', ';'
+        - Trailing incomplete dangling words/conjunctions
         """
         finish_reason = getattr(result, "finish_reason", None)
-        if not finish_reason:
-            return False, "ok"
+        finish_str = str(finish_reason).upper() if finish_reason else ""
+        is_max_tokens = ("MAX_TOKENS" in finish_str or "LENGTH" in finish_str)
 
-        finish_str = str(finish_reason).upper()
-        if "MAX_TOKENS" in finish_str or "LENGTH" in finish_str:
-            stripped = cleaned_text.rstrip()
-            if (cleaned_text.count('(') > cleaned_text.count(')') or
-                cleaned_text.count('[') > cleaned_text.count(']') or
-                cleaned_text.count('{') > cleaned_text.count('}') or
-                stripped.endswith(('(', '[', '{', '“', '‘', '...', '…')) or
-                len(cleaned_text.strip()) < 30):
-                return True, "max_tokens_truncated"
+        stripped = cleaned_text.rstrip()
+        
+        # Check unbalanced delimiters
+        if (cleaned_text.count('(') > cleaned_text.count(')') or
+            cleaned_text.count('[') > cleaned_text.count(']') or
+            cleaned_text.count('{') > cleaned_text.count('}')):
+            return True, "unbalanced_delimiters"
+
+        # Check ending with opening punctuation or continuation punctuation
+        if stripped.endswith(('(', '[', '{', '“', '‘', '...', '…', ',', '-', '—', ':', ';')):
+            return True, "ends_with_open_or_continuation_punctuation"
+
+        # Trailing dangling words
+        words = cleaned_text.strip().split()
+        if len(words) >= 1:
+            clean_last_word = re.sub(r'[^\w]', '', words[-1]).lower()
+            if clean_last_word in {"and", "or", "with", "to", "for", "that", "the", "a", "an", "because", "but"}:
+                return True, f"dangling_word_{clean_last_word}"
+
+        if is_max_tokens:
+            return True, "finish_reason_max_tokens"
+
         return False, "ok"
+
+    def _is_clearly_complete(self, result: Any, cleaned_text: str) -> bool:
+        """
+        Determine whether a response is clearly complete despite a MAX_TOKENS finish_reason.
+        """
+        if not cleaned_text or len(cleaned_text.strip()) < 30:
+            return False
+        words = cleaned_text.strip().split()
+        if len(words) < 6:
+            return False
+        stripped = cleaned_text.rstrip()
+        if stripped.endswith(('(', '[', '{', '“', '‘', '...', '…', ',', '-', '—', ':', ';')):
+            return False
+        if (cleaned_text.count('(') > cleaned_text.count(')') or
+            cleaned_text.count('[') > cleaned_text.count(']') or
+            cleaned_text.count('{') > cleaned_text.count('}')):
+            return False
+        clean_last_word = re.sub(r'[^\w]', '', words[-1]).lower()
+        if clean_last_word in {"and", "or", "with", "to", "for", "that", "the", "a", "an", "because", "but"}:
+            return False
+        return True
 
     def generate(
         self,
@@ -174,7 +212,7 @@ class ProviderManager:
         system_prompt: Optional[str] = None,
         recipient_name: Optional[str] = None,
         user_id: Optional[int] = None,
-        max_tokens: int = 1000,
+        max_tokens: int = 512,
         temperature: float = 0.9,
         top_p: float = 0.95,
         timeout: Optional[float] = None,
@@ -213,7 +251,8 @@ class ProviderManager:
 
         errors_summary = []
         start_overall = time.time()
-        gemini_max_retries = int(getattr(settings, "GEMINI_MAX_RETRIES", 1))
+        gemini_max_truncation_retries = int(getattr(settings, "GEMINI_MAX_TRUNCATION_RETRIES", 1))
+        gemini_retry_max_tokens = int(getattr(settings, "GEMINI_RETRY_MAX_OUTPUT_TOKENS", 768))
 
         for provider in self.providers:
             if not provider.is_configured():
@@ -245,37 +284,74 @@ class ProviderManager:
                 if hasattr(raw_result, "text"):
                     resp_text = raw_result.text
                     used_model = getattr(raw_result, "model", model_name)
+                    finish_reason = getattr(raw_result, "finish_reason", "STOP")
                     elapsed_ms = getattr(raw_result, "latency_ms", round((time.time() - p_start) * 1000, 2))
                 else:
                     resp_text = str(raw_result)
                     used_model = model_name
+                    finish_reason = "STOP"
                     elapsed_ms = round((time.time() - p_start) * 1000, 2)
 
                 cleaned = clean_ai_response(resp_text)
 
-                # Check if provider reported MAX_TOKENS and appears truncated
+                # Check if provider reported MAX_TOKENS or response is incomplete
                 is_truncated, trunc_reason = self._is_suspiciously_incomplete(raw_result, cleaned)
-                if is_truncated and gemini_max_retries > 0:
-                    retry_tokens = max(max_tokens * 2, getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 1024) + 512)
+                if is_truncated and provider_name == "gemini" and gemini_max_truncation_retries > 0:
                     logger.warning(
-                        "[AI TRUNCATED RESPONSE RETRY] provider=%s reason=%s. Retrying once with max_tokens=%d...",
-                        provider_name, trunc_reason, retry_tokens
+                        "[AI TRUNCATED RESPONSE DETECTED] provider=%s finish_reason=%s reason=%s. Retrying with max_tokens=%d...",
+                        provider_name, finish_reason, trunc_reason, gemini_retry_max_tokens
                     )
                     try:
                         retry_result = provider.generate(
                             prompt,
                             system_prompt=system_prompt,
-                            max_tokens=retry_tokens,
+                            max_tokens=gemini_retry_max_tokens,
                             temperature=temperature,
                             top_p=top_p,
                             timeout=timeout,
                         )
                         retry_text = retry_result.text if hasattr(retry_result, "text") else str(retry_result)
-                        cleaned = clean_ai_response(retry_text)
-                        elapsed_ms = round((time.time() - p_start) * 1000, 2)
-                        raw_result = retry_result
+                        retry_cleaned = clean_ai_response(retry_text)
+                        retry_finish = getattr(retry_result, "finish_reason", "STOP")
+                        elapsed_ms = getattr(retry_result, "latency_ms", round((time.time() - p_start) * 1000, 2))
+
+                        if retry_finish == "STOP":
+                            is_valid, validation_reason = self._validate_response(retry_cleaned, recipient_name)
+                            if is_valid:
+                                cleaned = retry_cleaned
+                                raw_result = retry_result
+                                used_model = getattr(retry_result, "model", used_model)
+                            else:
+                                logger.warning("[AI RETRY INVALID] provider=%s reason=%s", provider_name, validation_reason)
+                                errors_summary.append(f"{provider_name}: {validation_reason}")
+                                continue
+                        else:
+                            # Second attempt still reached MAX_TOKENS
+                            if self._is_clearly_complete(retry_result, retry_cleaned):
+                                is_valid, validation_reason = self._validate_response(retry_cleaned, recipient_name)
+                                if is_valid:
+                                    cleaned = retry_cleaned
+                                    raw_result = retry_result
+                                    used_model = getattr(retry_result, "model", used_model)
+                                else:
+                                    errors_summary.append(f"{provider_name}: {validation_reason}")
+                                    continue
+                            else:
+                                logger.warning("[AI RETRY STILL TRUNCATED] provider=%s max_tokens exhausted after retry. Falling back to next provider...", provider_name)
+                                errors_summary.append(f"{provider_name}: truncated_max_tokens_after_retry")
+                                continue
                     except Exception as retry_err:
-                        logger.warning("[AI RETRY FAILED] provider=%s retry failed: %s", provider_name, retry_err)
+                        logger.warning("[AI RETRY FAILED] provider=%s retry failed: %s. Falling back...", provider_name, retry_err)
+                        errors_summary.append(f"{provider_name}: retry_failed_{type(retry_err).__name__}")
+                        continue
+                elif is_truncated and (provider_name != "gemini" or gemini_max_truncation_retries == 0):
+                    if not self._is_clearly_complete(raw_result, cleaned):
+                        logger.warning(
+                            "[AI TRUNCATED RESPONSE REJECTED] provider=%s finish_reason=%s reason=%s. Falling back...",
+                            provider_name, finish_reason, trunc_reason
+                        )
+                        errors_summary.append(f"{provider_name}: {trunc_reason}")
+                        continue
 
                 is_valid, validation_reason = self._validate_response(cleaned, recipient_name)
                 if not is_valid:
@@ -415,7 +491,8 @@ def generate_ai_wish(
         mode=mode,
     )
 
-    max_tokens = 350 if mode == 'card' else 1000
+    default_max_tokens = int(getattr(settings, "GEMINI_MAX_OUTPUT_TOKENS", 512))
+    max_tokens = 350 if mode == 'card' else default_max_tokens
     temperature = 0.85 if mode == 'card' else 0.9
     top_p = 0.92 if mode == 'card' else 0.95
 

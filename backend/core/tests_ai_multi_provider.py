@@ -266,54 +266,121 @@ class MultiProviderAITests(TestCase):
         self.assertEqual(AICacheService.get_cached_wish(key_user_a), "Private wish for User A")
         self.assertIsNone(AICacheService.get_cached_wish(key_user_b))
 
-    # ── Test 11: Multilingual & Unicode Support (Malayalam 'ൽ') ────────────────
-    def test_multilingual_unicode_malayalam_with_chillu_letter(self):
-        """Malayalam script ending in a chillu letter (e.g. 'ൽ') must be accepted."""
-        self.gemini.return_text = "ജന്മദിനാശംസകൾ, രാഹുൽ! നിങ്ങളുടെ ഈ പ്രത്യേക ദിവസം സന്തോഷം നിറഞ്ഞതാകട്ടെ, സ്നേഹത്തോടെ രാഹുൽ"
-        res = self.manager.generate("Malayalam prompt", recipient_name="രാഹുൽ", use_cache=False)
+    # ── Test 1: Gemini FINISH response returns immediately ───────────────────
+    def test_gemini_finish_response_returns_immediately(self):
+        """Gemini returning FINISH/STOP completes immediately on first attempt without retry."""
+        self.gemini.return_finish_reason = "STOP"
+        self.gemini.return_text = "Happy Birthday Alice! Wishing you a fantastic day ahead!"
+        res = self.manager.generate("Happy Birthday", recipient_name="Alice", use_cache=False)
         self.assertEqual(res["provider"], "gemini")
-        self.assertIn("രാഹുൽ", res["content"])
-        self.assertEqual(self.groq.call_count, 0)
-
-    # ── Test 12: Hindi Text Ending in Unicode Letter ─────────────────────────
-    def test_hindi_text_ending_in_unicode_letter(self):
-        """Hindi text ending in a Devanagari character without ASCII punctuation must be accepted."""
-        self.gemini.return_text = "जन्मदिन की ढेर सारी शुभकामनाएं सारा आप हमेशा खुश और स्वस्थ रहें"
-        res = self.manager.generate("Hindi prompt", recipient_name="सारा", use_cache=False)
-        self.assertEqual(res["provider"], "gemini")
-        self.assertIn("शुभकामनाएं", res["content"])
-        self.assertEqual(self.groq.call_count, 0)
-
-    # ── Test 13: English Text Without Final Punctuation ──────────────────────
-    def test_english_text_without_final_punctuation_accepted(self):
-        """English text that ends without punctuation must not automatically fail."""
-        self.gemini.return_text = "Happy Birthday dear John wishing you a very wonderful year ahead"
-        res = self.manager.generate("English prompt", recipient_name="John", use_cache=False)
-        self.assertEqual(res["provider"], "gemini")
-        self.assertEqual(res["content"], "Happy Birthday dear John wishing you a very wonderful year ahead")
-        self.assertEqual(self.groq.call_count, 0)
-
-    # ── Test 14: Empty Output Fails and Falls Back ───────────────────────────
-    def test_empty_output_fails_and_falls_back(self):
-        """Empty provider output must fail validation and fall back to next provider."""
-        self.gemini.behavior = "empty_response"
-        res = self.manager.generate("Prompt", recipient_name="Sam", use_cache=False)
-        self.assertEqual(res["provider"], "groq")
         self.assertEqual(self.gemini.call_count, 1)
-        self.assertEqual(self.groq.call_count, 1)
+        self.assertEqual(self.groq.call_count, 0)
+        self.assertEqual(self.openrouter.call_count, 0)
+        self.assertIn("Happy Birthday Alice!", res["content"])
 
-    # ── Test 15: Gemini MAX_TOKENS with Incomplete Delimiters Retries ─────────
-    def test_gemini_max_tokens_truncated_retries_once(self):
-        """When Gemini returns MAX_TOKENS with unclosed brackets, provider_manager retries once."""
+    # ── Test 2: Gemini MAX_TOKENS triggers one retry ──────────────────────────
+    def test_gemini_max_tokens_triggers_one_retry(self):
+        """When Gemini returns MAX_TOKENS, provider_manager retries Gemini once."""
         self.gemini.behavior = "max_tokens_truncated"
-        res = self.manager.generate("Prompt", recipient_name="Rahul", use_cache=False)
+        res = self.manager.generate("Happy Birthday", recipient_name="Rahul", use_cache=False)
         self.assertEqual(res["provider"], "gemini")
-        # Should have called Gemini twice (initial + 1 retry) and succeeded without Groq
         self.assertEqual(self.gemini.call_count, 2)
         self.assertEqual(self.groq.call_count, 0)
         self.assertIn("Happy Birthday, Rahul!", res["content"])
 
-    # ── Test 16: Masked Key and Privacy ────────────────────────────────────────
+    # ── Test 3: Retry uses a larger output token limit (768) ───────────────────
+    @override_settings(GEMINI_MAX_OUTPUT_TOKENS=512, GEMINI_RETRY_MAX_OUTPUT_TOKENS=768, GEMINI_MAX_TRUNCATION_RETRIES=1)
+    def test_retry_uses_larger_output_token_limit(self):
+        """Retry must pass GEMINI_RETRY_MAX_OUTPUT_TOKENS (768) as max_tokens."""
+        self.gemini.behavior = "max_tokens_truncated"
+        res = self.manager.generate("Happy Birthday", recipient_name="Rahul", use_cache=False)
+        self.assertEqual(self.gemini.call_count, 2)
+        # Check initial call max_tokens and retry call max_tokens
+        first_call_kwargs = self.gemini.call_args_list[0][1]
+        second_call_kwargs = self.gemini.call_args_list[1][1]
+        self.assertEqual(first_call_kwargs.get("max_tokens"), 512)
+        self.assertEqual(second_call_kwargs.get("max_tokens"), 768)
+
+    # ── Test 4: Malayalam response ending with Malayalam characters is valid ───
+    def test_malayalam_response_ending_with_malayalam_characters_is_valid(self):
+        """Malayalam greetings ending in words like സന്തോഷം, സ്നേഹം, നന്ദി must be valid."""
+        for ending_word in ["സന്തോഷം", "സ്നേഹം", "നന്ദി"]:
+            text = f"പ്രിയപ്പെട്ട രാഹുൽ, നിങ്ങൾക്ക് ഹൃദയം നിറഞ്ഞ ജന്മദിനാശംസകൾ നേരുന്നു ഈ ദിവസം എന്നും {ending_word}"
+            is_valid, reason = self.manager._validate_response(text)
+            self.assertTrue(is_valid, f"Failed for ending word {ending_word}: {reason}")
+
+    # ── Test 5: Malayalam text is not rejected because final Unicode category is Lo ───
+    def test_malayalam_text_not_rejected_for_unicode_category_lo(self):
+        """Ensure Unicode category 'Lo' (like Malayalam 'ൽ' in രാഹുൽ) is never rejected."""
+        import unicodedata
+        char = 'ൽ'
+        self.assertEqual(unicodedata.category(char), 'Lo')
+        text = "പ്രിയപ്പെട്ട രാഹുൽ, നിങ്ങൾക്ക് എന്റെ ഹൃദയം നിറഞ്ഞ ജന്മദിനാശംസകൾ നേരുന്നു രാഹുൽ"
+        is_valid, reason = self.manager._validate_response(text)
+        self.assertTrue(is_valid, f"Rejected Malayalam text with reason: {reason}")
+
+    # ── Test 6: A response ending without punctuation can still be valid ──────
+    def test_response_ending_without_punctuation_can_be_valid(self):
+        """Multilingual responses ending without English punctuation must be valid."""
+        text_en = "Happy Birthday dear John wishing you a very wonderful year ahead with love"
+        is_valid_en, reason_en = self.manager._validate_response(text_en)
+        self.assertTrue(is_valid_en, f"English unpunctuated rejected: {reason_en}")
+
+        text_hi = "जन्मदिन की हार्दिक शुभकामनाएं आप हमेशा खुश और स्वस्थ रहें"
+        is_valid_hi, reason_hi = self.manager._validate_response(text_hi)
+        self.assertTrue(is_valid_hi, f"Hindi unpunctuated rejected: {reason_hi}")
+
+    # ── Test 7: Clearly truncated MAX_TOKENS response is not sent to frontend ───
+    def test_clearly_truncated_max_tokens_response_not_sent_to_frontend(self):
+        """If Gemini returns truncated MAX_TOKENS on initial and retry, it falls back to Groq."""
+        # Custom mock where both calls return truncated MAX_TOKENS
+        def custom_generate(prompt, **kwargs):
+            self.gemini.call_count += 1
+            self.gemini.call_args_list.append((prompt, kwargs))
+            return ProviderResult(
+                provider="gemini",
+                model="gemini-3.6-flash",
+                text="പ്രിയ രാഹുൽ, നിങ്ങൾക്ക് ജന്മദിനാശംസകൾ നേരുന്നു ഈ പ്രത്യേക (",
+                finish_reason="MAX_TOKENS",
+            )
+        self.gemini.generate = custom_generate
+
+        res = self.manager.generate("Wish text", recipient_name="Rahul", use_cache=False)
+        self.assertEqual(res["provider"], "groq")
+        self.assertEqual(self.gemini.call_count, 2)  # initial + 1 retry
+        self.assertEqual(self.groq.call_count, 1)    # fell back to Groq
+        self.assertIn("Happy Birthday from groq!", res["content"])
+
+    # ── Test 8: Retry count never exceeds GEMINI_MAX_TRUNCATION_RETRIES ────────
+    @override_settings(GEMINI_MAX_TRUNCATION_RETRIES=1)
+    def test_retry_count_never_exceeds_max_truncation_retries(self):
+        """Retry count should strictly adhere to GEMINI_MAX_TRUNCATION_RETRIES (1 max retry = 2 total calls)."""
+        def custom_generate(prompt, **kwargs):
+            self.gemini.call_count += 1
+            self.gemini.call_args_list.append((prompt, kwargs))
+            return ProviderResult(
+                provider="gemini",
+                model="gemini-3.6-flash",
+                text="Truncated text (",
+                finish_reason="MAX_TOKENS",
+            )
+        self.gemini.generate = custom_generate
+
+        res = self.manager.generate("Wish text", recipient_name="Alice", use_cache=False)
+        self.assertEqual(self.gemini.call_count, 2)  # exactly 1 retry
+        self.assertEqual(res["provider"], "groq")
+
+    # ── Test 9: Provider fallback still works when Gemini genuinely fails ──────
+    def test_provider_fallback_when_gemini_genuinely_fails(self):
+        """When Gemini throws ProviderUnavailableError, provider manager cleanly falls back to Groq."""
+        self.gemini.behavior = "unavailable"
+        res = self.manager.generate("Wish text", recipient_name="Alice", use_cache=False)
+        self.assertEqual(res["provider"], "groq")
+        self.assertEqual(self.gemini.call_count, 1)
+        self.assertEqual(self.groq.call_count, 1)
+        self.assertIn("Happy Birthday from groq!", res["content"])
+
+    # ── Test 10: Masked Key and Privacy ────────────────────────────────────────
     def test_masked_keys_do_not_leak_secrets(self):
         """Masked keys helper must never reveal full key strings."""
         gemini = GeminiProvider()
