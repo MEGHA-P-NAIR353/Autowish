@@ -414,7 +414,6 @@ export const DataProvider = ({ children }) => {
     generateAIGreeting,
 
     // Notifications
-    notifications,
     markNotificationRead, markAllNotificationsRead, deleteNotification, fetchNotifications,
 
     // Reload
