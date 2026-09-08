@@ -1,6 +1,6 @@
 # =============================================================================
 # Auto-Wish AI — Backend Dockerfile
-# Python 3.12 / Django / Celery
+# Python 3.12 / Django / Celery / Gunicorn
 # Shared image for: backend, celery_worker, celery_beat
 # =============================================================================
 
@@ -8,7 +8,8 @@ FROM python:3.12-slim
 
 # Prevent Python from writing .pyc files and enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
 # Install system dependencies:
 #   - libpq-dev   : PostgreSQL client headers (needed by psycopg2)
@@ -35,13 +36,12 @@ COPY . .
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
 # Make the entrypoint executable and set it as the container entrypoint.
-# Each service overrides CMD in docker-compose.yml.
+# Each service overrides CMD in docker-compose.yml or Railway start commands.
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-# Default command — runs the Django dev server.
-# docker-compose.yml overrides this per service.
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Default production command — runs Gunicorn binding to dynamic $PORT
+CMD ["sh", "-c", "gunicorn autowish.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 120 --access-logfile - --error-logfile -"]
