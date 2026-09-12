@@ -230,6 +230,7 @@ export default function GreetingWizard() {
       fd.append('font_family', cardData.font_family || 'Inter');
       fd.append('font_size', String(cardData.font_size));
       fd.append('text_color', cardData.text_color || '#FFFFFF');
+      fd.append('elements_json', JSON.stringify(cardData.elements_json || []));
       fd.append('status', status);
 
       let res;

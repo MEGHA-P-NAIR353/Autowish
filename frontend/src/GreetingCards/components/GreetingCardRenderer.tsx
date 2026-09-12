@@ -49,6 +49,7 @@ export const GreetingCardRenderer = React.forwardRef<HTMLDivElement, GreetingCar
       sticker,
       card_width = 500,
       card_height = 500,
+      elements_json = [],
     } = cardData;
 
     const [photoError, setPhotoError] = useState(false);
@@ -136,6 +137,31 @@ export const GreetingCardRenderer = React.forwardRef<HTMLDivElement, GreetingCar
 
         {/* Inner decorative border */}
         <div className="absolute inset-3 pointer-events-none border border-white/8 rounded-2xl" />
+
+        {elements_json.map((element: any) => {
+          if (!element?.content || !['text', 'image'].includes(element.type)) return null;
+          const style: React.CSSProperties = {
+            position: 'absolute',
+            left: `${element.x ?? 50}%`,
+            top: `${element.y ?? 50}%`,
+            width: `${element.width ?? 40}%`,
+            height: `${element.height ?? 15}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 12,
+          };
+          if (element.type === 'image') {
+            return <img key={element.id} src={element.content} alt="Custom card element" className="object-contain pointer-events-none" style={style} crossOrigin="anonymous" />;
+          }
+          return (
+            <div
+              key={element.id}
+              className="flex items-center justify-center text-center whitespace-pre-wrap break-words overflow-hidden pointer-events-none"
+              style={{ ...style, color: element.color || nameColor, fontFamily: element.fontFamily || `'${font_family}', ${UNICODE_FONT_FALLBACKS}`, fontSize: `${element.fontSize || font_size}px` }}
+            >
+              {element.content}
+            </div>
+          );
+        })}
 
         {/* Top bar: Occasion + Brand */}
         <div className="relative z-10 flex justify-between items-center px-6 pt-6 flex-shrink-0">

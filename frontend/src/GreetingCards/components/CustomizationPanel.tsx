@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChevronDown, ChevronRight, User, Type, Palette,
-  Image as ImageIcon, Smile, Sticker, Sparkles, Search, AlertTriangle,
+  Image as ImageIcon, Smile, Sticker, Sparkles, Search, AlertTriangle, Plus, Upload,
 } from 'lucide-react';
 import FontSelector from './FontSelector';
 import BackgroundPicker from './BackgroundPicker';
@@ -12,6 +12,7 @@ import AIMessagePanel from './AIMessagePanel';
 import ContactSelector from '../../components/ContactSelector';
 import { GreetingCardData } from '../types';
 import { AutoFitResult } from '../utils/textMeasurement';
+import { cardsAPI } from '../../services/greetingCardsAPI';
 
 // ─── Shared design tokens ──────────────────────────────────────────────────────
 const INPUT_CLS =
@@ -79,12 +80,57 @@ export default function CustomizationPanel({
   autoFitResult,
 }: CustomizationPanelProps) {
   const [openSection, setOpenSection] = useState<string>('contact');
+  const [customText, setCustomText] = useState('');
+  const [uploadingElement, setUploadingElement] = useState(false);
 
   const toggle = (id: string) => setOpenSection((prev) => (prev === id ? '' : id));
 
   // Get age and interests from selected contact
   const recipientAge = selectedContact?.age;
   const contactInterests = selectedContact?.interests || [];
+
+  const addTextElement = () => {
+    const content = customText.trim();
+    if (!content) return;
+    onChange({
+      elements_json: [
+        ...(cardData.elements_json || []),
+        {
+          id: `text-${Date.now()}`,
+          type: 'text',
+          content,
+          x: 50,
+          y: 72,
+          width: 80,
+          height: 12,
+          fontFamily: cardData.font_family || 'Inter',
+          fontSize: cardData.font_size || 18,
+          color: cardData.text_color || '#FFFFFF',
+        },
+      ],
+    });
+    setCustomText('');
+  };
+
+  const addImageElement = async (file?: File) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    setUploadingElement(true);
+    try {
+      const response = await cardsAPI.uploadImage(file);
+      const imageUrl = response.data.image_url || response.data.url || response.data.file_url;
+      if (!imageUrl) throw new Error('Upload response did not include an image URL');
+      onChange({
+        elements_json: [
+          ...(cardData.elements_json || []),
+          { id: `image-${Date.now()}`, type: 'image', content: imageUrl, x: 50, y: 35, width: 38, height: 28 },
+        ],
+      });
+    } catch {
+      // The existing recipient-photo uploader remains available if this upload fails.
+    } finally {
+      setUploadingElement(false);
+    }
+  };
 
   return (
     <div
@@ -120,6 +166,49 @@ export default function CustomizationPanel({
 
       {/* 1 ─ Recipient & Message */}
       <AccordionSection
+        id="elements"
+        label="Add Text or Image"
+        icon={<Plus size={14} className="text-indigo-400" />}
+        isOpen={openSection === 'elements'}
+        onToggle={() => toggle('elements')}
+      >
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addTextElement(); }}
+              placeholder="Add text to the template"
+              className={INPUT_CLS}
+            />
+            <button
+              type="button"
+              onClick={addTextElement}
+              disabled={!customText.trim()}
+              className="px-3 rounded-xl bg-indigo-600 text-white disabled:opacity-40"
+              aria-label="Add text element"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+          <label className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#334155] text-[#94A3B8] hover:border-indigo-500/50 hover:text-white transition-all bg-[#0F1422] py-3 text-xs cursor-pointer">
+            <Upload size={14} />
+            {uploadingElement ? 'Uploading image...' : 'Add image to template'}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploadingElement}
+              onChange={(e) => { void addImageElement(e.target.files?.[0]); e.target.value = ''; }}
+            />
+          </label>
+          <p className="text-[10px] text-[#64748B]">New elements are added to the card and saved with the template-based design.</p>
+        </div>
+      </AccordionSection>
+
+      {/* 1 ─ Recipient & Message */}
+      <AccordionSection
         id="text"
         label="Recipient & Message"
         icon={<User size={14} className="text-indigo-400" />}
@@ -133,14 +222,13 @@ export default function CustomizationPanel({
               id="recipient-name"
               type="text"
               value={cardData.recipient_name}
-              readOnly
-              disabled
-              placeholder="Select a contact in the Send step"
-              className={`${INPUT_CLS} opacity-80 cursor-not-allowed`}
+              onChange={(e) => onChange({ recipient_name: e.target.value })}
+              placeholder="Enter recipient name"
+              className={INPUT_CLS}
               autoComplete="off"
             />
             <p className="text-[9px] text-[#64748B] mt-1">
-              Auto-filled from the selected contact above.
+              Auto-filled from a selected contact, or enter a name manually.
             </p>
           </div>
 

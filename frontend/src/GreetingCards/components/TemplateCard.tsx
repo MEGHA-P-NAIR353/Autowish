@@ -224,7 +224,7 @@ const TemplateCard = memo(function TemplateCard({
           onClick={() => onUse(template)}
           className="w-full py-2 bg-[#1E293B] hover:bg-indigo-600 text-[#CBD5E1] hover:text-white rounded-xl text-[10px] font-semibold border border-[#334155] hover:border-indigo-500 transition-all duration-250"
         >
-          Customize Card
+          Use Template
         </button>
       </div>
     </motion.div>
