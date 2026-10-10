@@ -33,14 +33,14 @@ const Payments = () => {
         <p className="text-slate-400 text-sm">Secure sandbox checkout gateway for Auto-Wish AI.</p>
       </div>
 
-      <div className="bg-slate-850 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-6">
+      <div className="bg-surface border border-line-soft p-6 rounded-3xl shadow-2xl space-y-6">
         {/* Plan Summary */}
-        <div className="bg-slate-900 border border-slate-800/80 p-4 rounded-2xl flex justify-between items-center text-xs">
+        <div className="bg-inset border border-line-soft/80 p-4 rounded-2xl flex justify-between items-center text-xs">
           <div>
             <h4 className="font-bold text-slate-200">{plan} Subscription Plan</h4>
             <p className="text-[10px] text-slate-500 mt-0.5">Renews automatically monthly.</p>
           </div>
-          <span className="text-base font-extrabold text-white">${price}/mo</span>
+          <span className="text-base font-extrabold text-fg">${price}/mo</span>
         </div>
 
         <form onSubmit={handlePay} className="space-y-4">
@@ -52,7 +52,7 @@ const Payments = () => {
               placeholder="e.g. John Doe"
               value={cardName}
               onChange={e => setCardName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
             />
           </div>
 
@@ -69,7 +69,7 @@ const Payments = () => {
                 placeholder="4242 4242 4242 4242 (Sandbox Card)"
                 value={cardNumber}
                 onChange={e => setCardNumber(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           </div>
@@ -82,7 +82,7 @@ const Payments = () => {
                 required
                 maxLength="5"
                 placeholder="MM/YY"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
             <div>
@@ -92,7 +92,7 @@ const Payments = () => {
                 required
                 maxLength="3"
                 placeholder="•••"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           </div>

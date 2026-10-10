@@ -7,7 +7,12 @@ class CoreConfig(AppConfig):
 
     def ready(self):
         import os
+        import sys
         from django.conf import settings
+
+        # Do not start background scheduler during tests, migrations, checks, or shell
+        if any(cmd in sys.argv for cmd in ['test', 'pytest', 'makemigrations', 'migrate', 'collectstatic', 'check', 'showmigrations', 'shell']):
+            return
 
         # Run in the dev server's active child process (RUN_MAIN == 'true')
         # or in production where the reloader is not active (not DEBUG).

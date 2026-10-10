@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import Modal from '../components/Modal';
 import EmptyState from '../components/common/EmptyState';
-import { Plus, Calendar, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Plus, Calendar, Trash2, RefreshCw, LayoutGrid, List, Download, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  GlassCard, GlassButton, GlassModal, GlassInput,
+  GlassSelect, PageHeader, StatusBadge, SkeletonCards
+} from '../components/ui';
 
 const EventsPage = () => {
   const { events = [], addEvent, deleteEvent, contacts = [], loading = false, fetchAll } = useData();
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [view, setView] = useState('card');
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -14,13 +20,72 @@ const EventsPage = () => {
   });
   const [filterType, setFilterType] = useState('All');
 
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q !== null) {
+      setSearch(q);
+    }
+
+    const isCreate = searchParams.get('create') === 'true' || searchParams.get('new') === 'true';
+    if (isCreate) {
+      const defaultDate = searchParams.get('date') || '';
+      const defaultType = searchParams.get('type') || 'Birthday';
+      const defaultRecipient = searchParams.get('recipient') || '';
+      const defaultTitle = searchParams.get('title') || '';
+      setFormData(prev => ({
+        ...prev,
+        title: defaultTitle,
+        type: defaultType,
+        date: defaultDate,
+        recipient: defaultRecipient,
+        status: 'Upcoming'
+      }));
+      setShowModal(true);
+    }
+  }, [searchParams]);
+
   const safeEvents = Array.isArray(events) ? events : [];
   const safeContacts = Array.isArray(contacts) ? contacts : [];
-  const filteredEvents = safeEvents.filter(e => filterType === 'All' || e?.type === filterType);
+  const filteredEvents = safeEvents.filter(e => {
+    const matchesType = filterType === 'All' || e?.type === filterType;
+    const matchesSearch = !search ||
+      (e?.title || '').toLowerCase().includes(search.toLowerCase()) ||
+      (e?.recipient || '').toLowerCase().includes(search.toLowerCase()) ||
+      (e?.type || '').toLowerCase().includes(search.toLowerCase());
+    return matchesType && matchesSearch;
+  });
 
   const handleAdd = () => {
     setFormData({ title: '', type: 'Birthday', date: '', recipient: '', status: 'Upcoming' });
     setShowModal(true);
+  };
+
+  const exportCSV = () => {
+    if (!safeEvents || safeEvents.length === 0) {
+      toast.error('No events to export');
+      return;
+    }
+    const csv = [
+      ['Title', 'Type', 'Date', 'Recipient', 'Status'],
+      ...safeEvents.map(e => [
+        e.title || '',
+        e.type || '',
+        e.date || '',
+        e.recipient || '',
+        e.status || ''
+      ])
+    ].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'events.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Exported events.csv');
   };
 
   const handleSubmit = async (e) => {
@@ -38,8 +103,8 @@ const EventsPage = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Delete this event?')) {
+  const handleDelete = async (id, title) => {
+    if (window.confirm(`Delete ${title || 'this event'}?`)) {
       try {
         await deleteEvent(id);
         toast.success('Event removed');
@@ -52,122 +117,151 @@ const EventsPage = () => {
   const eventTypes = ['All', 'Birthday', 'Anniversary', 'Holiday', 'Festival'];
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Event Management</h1>
-          <p className="text-[#94A3B8]">Manage birthdays, anniversaries, holidays and more</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {fetchAll && (
-            <button
-              onClick={() => fetchAll()}
-              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 rounded-xl transition"
-              title="Refresh events"
+    <div className="space-y-6">
+      <PageHeader
+        title="Event Management"
+        subtitle={`Track and organize special occasions (${safeEvents.length} total).`}
+        icon={Calendar}
+        actions={
+          <div className="flex items-center gap-2.5">
+            {fetchAll && (
+              <GlassButton
+                variant="secondary"
+                size="sm"
+                iconOnly
+                onClick={() => fetchAll()}
+                title="Refresh events"
+                aria-label="Refresh events"
+              >
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+              </GlassButton>
+            )}
+            <GlassButton
+              variant="secondary"
+              size="sm"
+              onClick={exportCSV}
+              leftIcon={<Download size={14} />}
             >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            </button>
-          )}
-          <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Add Event
+              Export CSV
+            </GlassButton>
+            <GlassButton
+              variant="primary"
+              size="sm"
+              onClick={handleAdd}
+              leftIcon={<Plus size={15} />}
+            >
+              Add Event
+            </GlassButton>
+          </div>
+        }
+      />
+
+      {/* View Switcher & Filters */}
+      <GlassCard className="p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        {/* Card / Table toggle */}
+        <div className="inline-flex p-1 rounded-xl bg-raised/70 border border-line-soft">
+          <button
+            type="button"
+            onClick={() => setView('card')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              view === 'card'
+                ? 'bg-surface text-fg shadow-sm border border-line-soft'
+                : 'text-slate-400 hover:text-fg'
+            }`}
+          >
+            <LayoutGrid size={14} />
+            <span>Card View</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('list')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              view === 'list'
+                ? 'bg-surface text-fg shadow-sm border border-line-soft'
+                : 'text-slate-400 hover:text-fg'
+            }`}
+          >
+            <List size={14} />
+            <span>Table View</span>
           </button>
         </div>
-      </div>
 
-      {/* Tabs: Card / List View */}
-      <div className="flex items-center gap-2 mb-6">
-        <button 
-          onClick={() => setView('card')} 
-          className={`tab px-6 ${view === 'card' ? 'tab-active' : 'bg-[#334155] text-[#CBD5E1]'}`}
-        >
-          Card View
-        </button>
-        <button 
-          onClick={() => setView('list')} 
-          className={`tab px-6 ${view === 'list' ? 'tab-active' : 'bg-[#334155] text-[#CBD5E1]'}`}
-        >
-          Event View
-        </button>
-        
-        <div className="ml-auto flex gap-2">
+        {/* Filter Pills */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {eventTypes.map(type => (
-            <button 
+            <button
               key={type}
+              type="button"
               onClick={() => setFilterType(type)}
-              className={`px-4 py-1 text-xs rounded-full border transition ${filterType === type ? 'bg-[#3B82F6] border-[#3B82F6]' : 'border-[#475569] text-[#94A3B8]'}`}
+              className={`px-3 py-1 text-xs rounded-full font-medium transition-all border ${
+                filterType === type
+                  ? 'bg-indigo-600 text-white border-transparent shadow-sm shadow-indigo-600/20'
+                  : 'bg-raised/40 border-line-soft text-slate-400 hover:text-fg hover:bg-raised'
+              }`}
             >
               {type}
             </button>
           ))}
         </div>
-      </div>
+      </GlassCard>
 
       {/* Loading Skeleton */}
       {loading && safeEvents.length === 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(n => (
-            <div key={n} className="event-card animate-pulse">
-              <div className="flex justify-between items-center mb-3">
-                <div className="h-4 w-16 bg-slate-700 rounded-full" />
-                <div className="h-3 w-14 bg-slate-700 rounded" />
-              </div>
-              <div className="h-5 w-3/4 bg-slate-700 rounded mb-2" />
-              <div className="h-4 w-1/2 bg-slate-700 rounded mb-4" />
-              <div className="h-8 bg-slate-700/50 rounded mt-4" />
-            </div>
-          ))}
-        </div>
+        <SkeletonCards count={6} />
+      ) : filteredEvents.length === 0 ? (
+        <EmptyState
+          icon={Calendar}
+          title={filterType === 'All' ? 'No events scheduled yet' : `No ${filterType} events found`}
+          description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and holidays.' : `Try selecting another category or create a new ${filterType} event.`}
+          actionLabel="Add Event"
+          onAction={handleAdd}
+        />
       ) : (
         <>
           {/* Card View */}
           {view === 'card' && (
-            filteredEvents.length === 0 ? (
-              <EmptyState
-                icon={<Calendar size={28} />}
-                title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
-                description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found. Try a different filter or add a new event.`}
-                action={{ label: 'Add Event', onClick: handleAdd }}
-              />
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredEvents.map(event => (
-                  <div key={event.id} className="event-card">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className={`badge px-3 py-0.5 text-xs ${event.type === 'Birthday' ? 'bg-blue-500/20 text-blue-400' :
-                        event.type === 'Anniversary' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredEvents.map(event => (
+                <GlassCard key={event.id} className="p-5 flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                        event.type === 'Birthday'
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          : event.type === 'Anniversary'
+                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}>
                         {event.type || 'Event'}
-                      </div>
-                      <div className="text-xs text-[#64748B]">{event.date}</div>
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400 tabular-nums">{event.date}</span>
                     </div>
 
-                    <div className="font-semibold text-lg mb-1">{event.title}</div>
-                    <div className="text-sm text-[#94A3B8]">{event.recipient}</div>
-
-                    <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#334155]">
-                      <div className="text-xs px-3 py-1 rounded-full bg-[#0F172A] border border-[#334155]">{event.status || 'Upcoming'}</div>
-                      <div className="flex gap-1">
-                        <button className="p-1.5 hover:bg-[#334155] rounded-lg transition" onClick={() => handleDelete(event.id)} title="Delete event">
-                          <Trash2 size={15} className="text-red-400" />
-                        </button>
-                      </div>
-                    </div>
+                    <h3 className="font-bold text-base text-fg truncate" title={event.title}>{event.title}</h3>
+                    <p className="text-xs text-slate-400 mt-1 truncate">For: {event.recipient}</p>
                   </div>
-                ))}
-              </div>
-            )
+
+                  <div className="flex justify-between items-center pt-3 border-t border-line-soft">
+                    <StatusBadge status={event.status || 'Upcoming'} />
+                    <button
+                      type="button"
+                      className="btn-ghost btn-icon p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg"
+                      onClick={() => handleDelete(event.id, event.title)}
+                      title="Delete event"
+                      aria-label={`Delete ${event.title}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
           )}
 
-          {/* List / Event View */}
+          {/* Table View */}
           {view === 'list' && (
-            filteredEvents.length === 0 ? (
-              <EmptyState
-                icon={<Calendar size={28} />}
-                title={filterType === 'All' ? 'No events yet' : `No ${filterType} events`}
-                description={filterType === 'All' ? 'Add your first event to start tracking birthdays, anniversaries, and more.' : `No events of type "${filterType}" found.`}
-                action={{ label: 'Add Event', onClick: handleAdd }}
-              />
-            ) : (
-              <div className="card overflow-hidden">
+            <GlassCard className="overflow-hidden">
+              <div className="table-wrap">
                 <table className="table">
                   <thead>
                     <tr>
@@ -176,19 +270,31 @@ const EventsPage = () => {
                       <th>Date</th>
                       <th>Recipient</th>
                       <th>Status</th>
-                      <th></th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredEvents.map(event => (
-                      <tr key={event.id} className="hover:bg-[#1E293B]/40">
-                        <td className="font-medium">{event.title}</td>
-                        <td><span className="badge bg-[#334155] px-2.5">{event.type}</span></td>
-                        <td className="text-sm">{event.date}</td>
-                        <td>{event.recipient}</td>
-                        <td><span className="text-emerald-400 text-xs font-medium">{event.status || 'Upcoming'}</span></td>
+                      <tr key={event.id} className="transition-colors">
+                        <td className="font-semibold text-fg">{event.title}</td>
+                        <td>
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-raised text-slate-400 border border-line-soft">
+                            {event.type}
+                          </span>
+                        </td>
+                        <td className="text-sm text-slate-300 tabular-nums">{event.date}</td>
+                        <td className="text-sm text-slate-300">{event.recipient}</td>
+                        <td>
+                          <StatusBadge status={event.status || 'Upcoming'} />
+                        </td>
                         <td className="text-right">
-                          <button onClick={() => handleDelete(event.id)} className="p-2 text-red-400 hover:bg-[#334155] rounded-md transition" title="Delete event">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(event.id, event.title)}
+                            className="btn-ghost btn-icon p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg"
+                            title="Delete event"
+                            aria-label={`Delete ${event.title}`}
+                          >
                             <Trash2 size={15} />
                           </button>
                         </td>
@@ -197,52 +303,73 @@ const EventsPage = () => {
                   </tbody>
                 </table>
               </div>
-            )
+            </GlassCard>
           )}
         </>
       )}
 
       {/* Add Event Modal */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Add New Event">
+      <GlassModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title="Add New Event"
+        description="Schedule an upcoming celebration in your calendar."
+        size="md"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs text-[#94A3B8]">Event Title</label>
-            <input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="input" placeholder="e.g. Annual Team Celebration" required />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-[#94A3B8]">Type</label>
-              <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="input">
-                <option>Birthday</option>
-                <option>Anniversary</option>
-                <option>Holiday</option>
-                <option>Festival</option>
-                <option>Custom</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-[#94A3B8]">Date</label>
-              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="input" required />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-[#94A3B8]">Recipient</label>
-            <select value={formData.recipient} onChange={e => setFormData({...formData, recipient: e.target.value})} className="input">
-              <option value="">Select recipient</option>
-              {safeContacts.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              <option value="Team">Team</option>
-            </select>
+          <GlassInput
+            label="Event Title"
+            value={formData.title}
+            onChange={e => setFormData({ ...formData, title: e.target.value })}
+            placeholder="e.g. John's 30th Birthday"
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <GlassSelect
+              label="Occasion Type"
+              value={formData.type}
+              onChange={e => setFormData({ ...formData, type: e.target.value })}
+            >
+              <option>Birthday</option>
+              <option>Anniversary</option>
+              <option>Holiday</option>
+              <option>Festival</option>
+              <option>Custom</option>
+            </GlassSelect>
+
+            <GlassInput
+              label="Date"
+              type="date"
+              value={formData.date}
+              onChange={e => setFormData({ ...formData, date: e.target.value })}
+              required
+            />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary">Add Event</button>
+          <GlassSelect
+            label="Recipient"
+            value={formData.recipient}
+            onChange={e => setFormData({ ...formData, recipient: e.target.value })}
+            required
+          >
+            <option value="">Select recipient...</option>
+            {safeContacts.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            <option value="Team">Team</option>
+          </GlassSelect>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-line-soft">
+            <GlassButton variant="ghost" onClick={() => setShowModal(false)}>
+              Cancel
+            </GlassButton>
+            <GlassButton variant="primary" type="submit">
+              Save Event
+            </GlassButton>
           </div>
         </form>
-      </Modal>
+      </GlassModal>
     </div>
   );
 };
 
 export default EventsPage;
-

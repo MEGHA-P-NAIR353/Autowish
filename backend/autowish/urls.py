@@ -10,13 +10,16 @@ from core.views import (
     ContactViewSet, EventViewSet, GreetingTemplateViewSet,
     ScheduledWishViewSet, SchedulesViewSet, EmailLogViewSet, NotificationViewSet,
     AIPromptViewSet, AuditLogViewSet, AdminUserViewSet,
-    register, login_view, verify_email, forgot_password, reset_password,
+    register, login_view, verify_email, forgot_password, verify_reset_otp, reset_password,
     change_password, user_profile_view, upload_avatar, delete_account,
     generate_ai_greeting, send_greeting_email, schedule_greeting, save_greeting_template,
     dashboard_stats, greeting_analytics, subscription_plans,
-    create_checkout_session, payment_webhook, admin_dashboard_stats,
+    create_checkout_session, payment_webhook,
+    dummy_payment_create, dummy_payment_process, dummy_payment_cancel,
+    payment_list, payment_detail, admin_dashboard_stats,
     recent_activity,
-    GreetingCardTemplateViewSet, GreetingCardViewSet
+    GreetingCardTemplateViewSet, GreetingCardViewSet,
+    global_search
 )
 
 router = DefaultRouter()
@@ -44,6 +47,7 @@ urlpatterns = [
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/verify-email/', verify_email, name='verify_email'),
     path('api/auth/forgot-password/', forgot_password, name='forgot_password'),
+    path('api/auth/verify-reset-otp/', verify_reset_otp, name='verify_reset_otp'),
     path('api/auth/reset-password/', reset_password, name='reset_password'),
     path('api/auth/change-password/', change_password, name='change_password'),
     path('api/auth/profile/', user_profile_view, name='profile_view'),
@@ -60,12 +64,18 @@ urlpatterns = [
     path('api/subscriptions/plans/', subscription_plans, name='subscription-plans'),
     path('api/payments/checkout/', create_checkout_session, name='payments-checkout'),
     path('api/payments/webhook/', payment_webhook, name='payments-webhook'),
+    path('api/payments/dummy/create/', dummy_payment_create, name='dummy-payment-create'),
+    path('api/payments/dummy/process/', dummy_payment_process, name='dummy-payment-process'),
+    path('api/payments/dummy/cancel/', dummy_payment_cancel, name='dummy-payment-cancel'),
+    path('api/payments/', payment_list, name='payment-list'),
+    path('api/payments/<int:payment_id>/', payment_detail, name='payment-detail'),
     
     # Dashboard & Admin
     path('api/dashboard/stats/', dashboard_stats, name='dashboard-stats'),
     path('api/dashboard/recent-activity/', recent_activity, name='recent-activity'),
     path('api/analytics/greetings/', greeting_analytics, name='greeting-analytics'),
     path('api/admin/dashboard/stats/', admin_dashboard_stats, name='admin-dashboard-stats'),
+    path('api/search/', global_search, name='global-search'),
 
 ]
 

@@ -1,19 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Calendar, Users, Mail, Clock, TrendingUp, Plus, RefreshCw, Sparkles, Gift } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Calendar, Users, Mail, Clock, TrendingUp, Plus, RefreshCw, Sparkles, Gift, CheckCircle2, CalendarClock } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useChartTheme, chartTooltipStyle } from '../context/ThemeContext';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import EmptyState from '../components/common/EmptyState';
+import { GlassCard, GlassStatCard, GlassButton, PageHeader, StatusBadge, Skeleton } from '../components/ui';
 
 // ─── Animated Count ─────────────────────────────────────────────────────────────
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 const useCountUp = (target, duration = 600) => {
   const [value, setValue] = useState(0);
   const prevRef = useRef(0);
   useEffect(() => {
     const start = prevRef.current;
     const end = Number(target) || 0;
-    if (start === end) { setValue(end); return; }
+    if (start === end || prefersReducedMotion()) { setValue(end); prevRef.current = end; return; }
     let raf;
     const startTime = performance.now();
     const tick = (now) => {
@@ -35,340 +40,319 @@ const AnimatedNumber = ({ value }) => {
   return <>{v.toLocaleString()}</>;
 };
 
-// ─── Greeting Stat Card ────────────────────────────────────────────────────────
-const GreetingStatCard = ({ icon, iconBg, title, data, loading, error }) => {
-  if (error) {
-    return (
-      <div className="stat-card border border-rose-500/30">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[#94A3B8]">{title}</div>
-            <div className="stat-number mt-1 text-rose-400">Error</div>
+const CATEGORY_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#06B6D4'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// ─── Greeting Stat Card (AI greetings / greeting cards) ────────────────────────
+const GreetingStatCard = ({ icon: Icon, accent, title, data, loading, error, delay }) => (
+  <GlassStatCard icon={Icon} accent={accent} label={title} loading={loading} error={error} delay={delay}
+    value={<AnimatedNumber value={data?.total ?? 0} />}>
+    {!loading && !error && (
+      <dl className="grid grid-cols-3 gap-2 mt-4 text-center">
+        {[['Today', data?.today], ['Week', data?.week], ['Month', data?.month]].map(([k, v]) => (
+          <div key={k} className="bg-inset/60 border border-line-soft rounded-xl py-2">
+            <dt className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">{k}</dt>
+            <dd className="text-sm font-semibold text-slate-200 tabular-nums"><AnimatedNumber value={v ?? 0} /></dd>
           </div>
-          <div className={iconBg}><TrendingUp size={26} /></div>
-        </div>
-      </div>
-    );
-  }
-  if (loading) {
-    return (
-      <div className="stat-card">
-        <div className="flex items-center justify-between">
-          <div className="w-full">
-            <div className="h-3 w-20 bg-slate-700/60 rounded animate-pulse mb-2" />
-            <div className="h-6 w-12 bg-slate-700/60 rounded animate-pulse" />
-          </div>
-          <div className={`${iconBg} opacity-60`}><TrendingUp size={26} /></div>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="stat-card">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[#94A3B8]">{title}</div>
-          <div className="stat-number mt-1"><AnimatedNumber value={data?.total ?? 0} /></div>
-        </div>
-        <div className={iconBg}>{icon}</div>
-      </div>
-      <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-        <div className="bg-[#0F172A] rounded-lg py-1.5">
-          <div className="text-[10px] text-[#64748B] uppercase">Today</div>
-          <div className="text-sm font-semibold text-slate-200"><AnimatedNumber value={data?.today ?? 0} /></div>
-        </div>
-        <div className="bg-[#0F172A] rounded-lg py-1.5">
-          <div className="text-[10px] text-[#64748B] uppercase">Week</div>
-          <div className="text-sm font-semibold text-slate-200"><AnimatedNumber value={data?.week ?? 0} /></div>
-        </div>
-        <div className="bg-[#0F172A] rounded-lg py-1.5">
-          <div className="text-[10px] text-[#64748B] uppercase">Month</div>
-          <div className="text-sm font-semibold text-slate-200"><AnimatedNumber value={data?.month ?? 0} /></div>
-        </div>
-      </div>
-    </div>
-  );
+        ))}
+      </dl>
+    )}
+  </GlassStatCard>
+);
+
+const ACTIVITY_ICON = (type = '') => {
+  if (type.startsWith('CONTACT_')) return <Users size={18} className="text-blue-400" />;
+  if (type.startsWith('EVENT_')) return <Calendar size={18} className="text-purple-400" />;
+  if (type === 'WISH_SENT' || type === 'GREETING_CARD_SENT') return <Mail size={18} className="text-emerald-400" />;
+  if (type === 'WISH_SCHEDULED') return <Clock size={18} className="text-amber-400" />;
+  if (type === 'WISH_GENERATED' || type === 'AI_GREETING_GENERATED') return <Sparkles size={18} className="text-indigo-400" />;
+  if (type.startsWith('GREETING_CARD_')) return <Gift size={18} className="text-pink-400" />;
+  return <Clock size={18} className="text-slate-400" />;
 };
 
 const Dashboard = () => {
-  const { stats, events, greetingAnalytics, recentActivities, activitiesLoading, activitiesError, fetchAll, loading } = useData();
+  const { stats, events, emailLogs, greetingAnalytics, recentActivities, activitiesLoading, activitiesError, fetchAll, loading } = useData();
   const { user } = useAuth();
-  const displayName = user?.first_name || user?.username || 'there';
+  const chart = useChartTheme();
+  const displayName = user?.display_name || user?.full_name || (user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.username || 'there');
 
   const analyticsLoading = loading;
   const analyticsError = !greetingAnalytics;
 
-  // Mock data for charts
-  const monthlyData = [
-    { month: 'Jan', wishes: 68 }, { month: 'Feb', wishes: 81 }, { month: 'Mar', wishes: 94 },
-    { month: 'Apr', wishes: 76 }, { month: 'May', wishes: 115 }, { month: 'Jun', wishes: 88 },
-    { month: 'Jul', wishes: 124 }, { month: 'Aug', wishes: 105 }
-  ];
+  // ── Derived from real data already loaded in DataContext ──
+  const monthlyData = useMemo(() => {
+    const now = new Date();
+    const buckets = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (7 - i), 1);
+      return { key: `${d.getFullYear()}-${d.getMonth()}`, month: MONTHS[d.getMonth()], wishes: 0 };
+    });
+    (emailLogs || []).forEach((log) => {
+      if (!['Sent', 'Delivered'].includes(log.status) || !log.created_at) return;
+      const d = new Date(log.created_at);
+      const b = buckets.find((x) => x.key === `${d.getFullYear()}-${d.getMonth()}`);
+      if (b) b.wishes += 1;
+    });
+    return buckets;
+  }, [emailLogs]);
+  const hasMonthly = monthlyData.some((m) => m.wishes > 0);
 
-  const categoryData = [
-    { name: 'Birthday', value: 54, color: '#3B82F6' },
-    { name: 'Anniversary', value: 22, color: '#8B5CF6' },
-    { name: 'Holiday', value: 15, color: '#10B981' },
-    { name: 'Other', value: 9, color: '#F59E0B' },
-  ];
+  const categoryData = useMemo(() => {
+    const counts = {};
+    (events || []).forEach((e) => { if (e.type) counts[e.type] = (counts[e.type] || 0) + 1; });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return Object.entries(counts).map(([name, count], i) => ({
+      name, count, value: Math.round((count / total) * 100), color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }));
+  }, [events]);
 
-  const upcomingEvents = events.slice(0, 3);
+  const upcomingEvents = (events || []).slice(0, 3);
+
+  // Calendar overview for the current month with real event days highlighted
+  const calendar = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const first = new Date(y, m, 1).getDay();
+    const days = new Date(y, m + 1, 0).getDate();
+    const eventDays = new Set();
+    (events || []).forEach((e) => {
+      const d = new Date(`${e.date}T00:00:00`);
+      if (!Number.isNaN(d.getTime()) && d.getFullYear() === y && d.getMonth() === m) eventDays.add(d.getDate());
+    });
+    return { label: now.toLocaleString(undefined, { month: 'long', year: 'numeric' }), first, days, eventDays, today: now.getDate() };
+  }, [events]);
+
+  // Backend reports 100% when nothing has been attempted, so only show it once there is data.
+  const attempted = (Number(stats.wishesSent) || 0) + (Number(stats.failedEmails) || 0);
+  const successRate = attempted > 0 ? stats.successRate : null;
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-[#94A3B8]">Welcome back, {displayName}! Here's what's happening.</p>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={fetchAll} disabled={loading} className="btn-secondary flex items-center gap-2" title="Refresh data">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <Link to="/ai-greeting" className="btn-secondary flex items-center gap-2">
-            <Plus size={16} /> Generate Greeting
-          </Link>
-          <Link to="/schedule" className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Schedule Wish
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle={`Welcome back, ${displayName}! Here's what's happening.`}
+        actions={
+          <>
+            <GlassButton onClick={fetchAll} disabled={loading} iconOnly aria-label="Refresh data" title="Refresh data">
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+            </GlassButton>
+            <GlassButton as={Link} to="/ai-greeting" variant="secondary" leftIcon={<Sparkles size={16} aria-hidden="true" />}>
+              Generate Greeting
+            </GlassButton>
+            <GlassButton as={Link} to="/schedule" variant="primary" leftIcon={<Plus size={16} aria-hidden="true" />}>
+              Schedule Wish
+            </GlassButton>
+          </>
+        }
+      />
 
-      {/* Stats Cards - Exact from screenshot */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="stat-card">
-          <div className="flex justify-between">
-            <div>
-              <div className="text-sm text-[#94A3B8]">Total Contacts</div>
-              <div className="stat-number mt-1">{stats.totalContacts ?? '—'}</div>
-            </div>
-            <Users className="text-blue-400" size={26} />
-          </div>
-        </div>
+      {/* Key metrics */}
+      <section aria-label="Key metrics" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-4">
+        <GlassStatCard icon={Users} accent="blue" label="Total Contacts" delay={0}
+          value={stats.totalContacts != null ? <AnimatedNumber value={stats.totalContacts} /> : '—'} />
+        <GlassStatCard icon={Calendar} accent="violet" label="Upcoming Events" delay={0.05}
+          value={stats.upcomingEvents != null ? <AnimatedNumber value={stats.upcomingEvents} /> : '—'} />
+        <GlassStatCard icon={CalendarClock} accent="amber" label="Scheduled Wishes" delay={0.1}
+          value={stats.totalScheduled != null ? <AnimatedNumber value={stats.totalScheduled} /> : '—'} />
+        <GlassStatCard icon={Mail} accent="emerald" label="Wishes Sent" delay={0.15}
+          value={stats.wishesSent != null ? <AnimatedNumber value={stats.wishesSent} /> : '—'} />
+        <GlassStatCard icon={CheckCircle2} accent="indigo" label="Success Rate" delay={0.2}
+          value={successRate != null ? `${successRate}%` : '—'}
+          hint={stats.failedEmails ? `${stats.failedEmails} failed` : undefined} />
+      </section>
 
-        <div className="stat-card">
-          <div className="flex justify-between">
-            <div>
-              <div className="text-sm text-[#94A3B8]">Upcoming Events</div>
-              <div className="stat-number mt-1">{stats.upcomingEvents ?? '—'}</div>
-            </div>
-            <Calendar className="text-purple-400" size={26} />
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex justify-between">
-            <div>
-              <div className="text-sm text-[#94A3B8]">Wishes Sent</div>
-              <div className="stat-number mt-1">{stats.wishesSent ?? '—'}</div>
-            </div>
-            <Mail className="text-emerald-400" size={26} />
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex justify-between">
-            <div>
-              <div className="text-sm text-[#94A3B8]">Pending Replies</div>
-              <div className="stat-number mt-1">{stats.pendingReplies ?? 0}</div>
-            </div>
-            <Clock className="text-amber-400" size={26} />
-          </div>
-        </div>
-      </div>
-
-      {/* Greeting Stat Cards - AI Greetings Sent & Greeting Cards Sent */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <GreetingStatCard
-          icon={<Sparkles size={26} className="text-indigo-400" />}
-          iconBg="text-indigo-400"
-          title="AI Greetings Sent"
-          data={greetingAnalytics?.aiGreetings}
-          loading={analyticsLoading}
-          error={analyticsError}
-        />
-        <GreetingStatCard
-          icon={<Gift size={26} className="text-emerald-400" />}
-          iconBg="text-emerald-400"
-          title="Greeting Cards Sent"
-          data={greetingAnalytics?.greetingCards}
-          loading={analyticsLoading}
-          error={analyticsError}
-        />
-      </div>
+      {/* Greeting stat cards */}
+      <section aria-label="Greeting activity" className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <GreetingStatCard icon={Sparkles} accent="indigo" title="AI Greetings Sent" data={greetingAnalytics?.aiGreetings}
+          loading={analyticsLoading} error={analyticsError} delay={0.25} />
+        <GreetingStatCard icon={Gift} accent="pink" title="Greeting Cards Sent" data={greetingAnalytics?.greetingCards}
+          loading={analyticsLoading} error={analyticsError} delay={0.3} />
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Calendar + Stats */}
-        <div className="lg:col-span-7 card p-5">
+        {/* Upcoming events + calendar */}
+        <GlassCard className="lg:col-span-7 p-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="font-semibold">Upcoming Events</div>
-            <Link to="/events" className="text-xs text-blue-400">View All →</Link>
+            <h2 className="font-semibold text-fg">Upcoming Events</h2>
+            <Link to="/events" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">View all →</Link>
           </div>
 
-          <div className="space-y-2 mb-4">
-            {upcomingEvents.length > 0 ? upcomingEvents.map(event => (
-              <div key={event.id} className="flex justify-between items-center bg-[#0F172A] px-4 py-[13px] rounded-xl border border-[#334155]">
-                <div>
-                  <div className="font-medium">{event.title}</div>
-                  <div className="text-sm text-[#64748B]">{event.recipient} • {event.date}</div>
+          <div className="space-y-2 mb-5">
+            {upcomingEvents.length > 0 ? upcomingEvents.map((event) => (
+              <div key={event.id} className="flex justify-between items-center gap-3 bg-inset/60 hover:bg-inset px-4 py-3 rounded-xl border border-line-soft transition-colors">
+                <div className="min-w-0">
+                  <div className="font-medium text-fg truncate">{event.title}</div>
+                  <div className="text-sm text-slate-500 truncate">{event.recipient} • {event.date}</div>
                 </div>
-                <div className={`text-xs px-3 py-1 rounded-full ${event.status === 'Today' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                  {event.status}
-                </div>
+                <StatusBadge status={event.status} />
               </div>
-            )) : <div className="text-[#64748B]">No upcoming events</div>}
+            )) : <div className="text-slate-500 text-sm">No upcoming events</div>}
           </div>
 
-          {/* Mini Calendar */}
-          <div className="pt-4 border-t border-[#334155]">
-            <div className="text-sm font-medium mb-3">Calendar Overview</div>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs">
-              {['S','M','T','W','T','F','S'].map((d, i) => <div key={i} className="text-[#64748B] py-1">{d}</div>)}
-              {Array.from({ length: 28 }, (_, i) => {
+          <div className="pt-4 border-t border-line-soft">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-fg">Calendar Overview</div>
+              <div className="text-xs text-slate-500">{calendar.label}</div>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs" role="grid" aria-label={`Calendar for ${calendar.label}`}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i} className="text-slate-500 py-1 font-semibold" role="columnheader">{d}</div>)}
+              {Array.from({ length: calendar.first }, (_, i) => <div key={`pad-${i}`} />)}
+              {Array.from({ length: calendar.days }, (_, i) => {
                 const day = i + 1;
-                const hasEvent = [18,19,22,25].includes(day);
+                const hasEvent = calendar.eventDays.has(day);
+                const isToday = day === calendar.today;
                 return (
-                  <div key={i} className={`py-[5px] rounded-lg text-sm ${hasEvent ? 'bg-blue-500 text-white font-medium' : 'hover:bg-[#334155]'}`}>
+                  <div
+                    key={day}
+                    role="gridcell"
+                    aria-label={`${day}${hasEvent ? ', has event' : ''}${isToday ? ', today' : ''}`}
+                    className={`py-[6px] rounded-lg text-sm tabular-nums transition-colors ${
+                      hasEvent ? 'bg-gradient-to-br from-blue-500 to-violet-500 text-white font-semibold shadow-sm' :
+                      isToday ? 'border border-indigo-400/60 text-fg font-semibold' : 'text-slate-300 hover:bg-raised'
+                    }`}
+                  >
                     {day}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </GlassCard>
 
         {/* Right side - Stats + Quick Actions */}
         <div className="lg:col-span-5 flex flex-col gap-6">
-          {/* Stats breakdown */}
-          <div className="card p-5">
-            <div className="font-semibold mb-4">Stats</div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex justify-between py-2 border-b border-[#334155]"><span>Total Contacts</span> <span className="font-semibold">{stats.totalContacts}</span></div>
-              <div className="flex justify-between py-2 border-b border-[#334155]"><span>Upcoming Events</span> <span className="font-semibold">{stats.upcomingEvents}</span></div>
-              <div className="flex justify-between py-2 border-b border-[#334155]"><span>Wishes Sent</span> <span className="font-semibold">{stats.wishesSent}</span></div>
-              <div className="flex justify-between py-2 border-b border-[#334155]"><span>Pending Replies</span> <span className="font-semibold">{stats.pendingReplies}</span></div>
-            </div>
-          </div>
+          <GlassCard className="p-5 sm:p-6">
+            <h2 className="font-semibold text-fg mb-4">Stats</h2>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 text-sm">
+              {[
+                ['Total Contacts', stats.totalContacts],
+                ['Upcoming Events', stats.upcomingEvents],
+                ['Wishes Sent', stats.wishesSent],
+                ['Pending Replies', stats.pendingReplies],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between py-2.5 border-b border-line-soft">
+                  <dt className="text-slate-400">{k}</dt>
+                  <dd className="font-semibold text-fg tabular-nums">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </GlassCard>
 
-          {/* Quick Actions */}
-          <div className="card p-5">
-            <div className="font-semibold mb-4">Quick Actions</div>
+          <GlassCard className="p-5 sm:p-6">
+            <h2 className="font-semibold text-fg mb-4">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-3">
-              <Link to="/contacts" className="flex items-center gap-2 bg-[#334155] hover:bg-[#475569] px-4 py-3 rounded-xl text-sm transition-colors">
-                <Users size={17} /> Add Contact
-              </Link>
-              <Link to="/events" className="flex items-center gap-2 bg-[#334155] hover:bg-[#475569] px-4 py-3 rounded-xl text-sm transition-colors">
-                <Calendar size={17} /> Add Event
-              </Link>
-              <Link to="/ai-greeting" className="flex items-center gap-2 bg-[#334155] hover:bg-[#475569] px-4 py-3 rounded-xl text-sm transition-colors">
-                <span>✨</span> Generate AI Wish
-              </Link>
-              <Link to="/schedule" className="flex items-center gap-2 bg-[#334155] hover:bg-[#475569] px-4 py-3 rounded-xl text-sm transition-colors">
-                <Clock size={17} /> Schedule Wish
-              </Link>
+              {[
+                { to: '/contacts', icon: <Users size={17} />, label: 'Add Contact' },
+                { to: '/events', icon: <Calendar size={17} />, label: 'Add Event' },
+                { to: '/ai-greeting', icon: <Sparkles size={17} />, label: 'Generate AI Wish' },
+                { to: '/schedule', icon: <Clock size={17} />, label: 'Schedule Wish' },
+              ].map((a) => (
+                <Link key={a.to + a.label} to={a.to}
+                  className="group flex items-center gap-2.5 bg-inset/60 hover:bg-raised border border-line-soft hover:border-line px-4 py-3 rounded-xl text-sm font-medium text-slate-200 transition-all hover:-translate-y-0.5">
+                  <span className="text-indigo-400 group-hover:scale-110 transition-transform" aria-hidden="true">{a.icon}</span>
+                  {a.label}
+                </Link>
+              ))}
             </div>
-          </div>
+          </GlassCard>
         </div>
 
         {/* Charts */}
-        <div className="lg:col-span-7 card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold">Monthly Wishes</div>
-            <div className="text-xs text-[#64748B]">Last 8 months</div>
+        <GlassCard className="lg:col-span-7 p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-fg">Monthly Wishes</h2>
+            <div className="text-xs text-slate-500">Last 8 months</div>
           </div>
-          <div className="h-[210px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="month" stroke="#64748B" fontSize={12} />
-                <YAxis stroke="#64748B" fontSize={12} />
-                <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px' }} />
-                <Bar dataKey="wishes" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="lg:col-span-5 card p-5">
-          <div className="font-semibold mb-4">Event Categories</div>
-          <div className="flex items-center gap-7">
-            <div className="flex-1 h-40">
+          {loading && !hasMonthly ? <Skeleton className="h-[210px] w-full" /> : hasMonthly ? (
+            <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65}>
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
+                <BarChart data={monthlyData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={chart.primary} stopOpacity={1} />
+                      <stop offset="100%" stopColor={chart.secondary} stopOpacity={0.75} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                  <XAxis dataKey="month" stroke={chart.axis} tick={{ fill: chart.axis }} fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke={chart.axis} tick={{ fill: chart.axis }} fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={chartTooltipStyle(chart)} cursor={{ fill: chart.cursor }} />
+                  <Bar dataKey="wishes" name="Wishes sent" fill="url(#barFill)" radius={[6, 6, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="space-y-2 text-sm">
-              {categoryData.map((cat, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ background: cat.color }}></div>
-                  <span>{cat.name}</span>
-                  <span className="ml-auto text-[#64748B]">{cat.value}%</span>
-                </div>
-              ))}
+          ) : (
+            <EmptyState icon={TrendingUp} title="No sent wishes yet" description="Delivered wishes will be charted here by month." />
+          )}
+        </GlassCard>
+
+        <GlassCard className="lg:col-span-5 p-5 sm:p-6">
+          <h2 className="font-semibold text-fg mb-4">Event Categories</h2>
+          {categoryData.length > 0 ? (
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="w-full sm:flex-1 h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={3} stroke="none">
+                      {categoryData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={chartTooltipStyle(chart)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="space-y-2 text-sm w-full sm:w-auto sm:min-w-[140px]">
+                {categoryData.map((cat) => (
+                  <li key={cat.name} className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} aria-hidden="true" />
+                    <span className="text-slate-300">{cat.name}</span>
+                    <span className="ml-auto text-slate-500 tabular-nums">{cat.value}%</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-        </div>
+          ) : (
+            <EmptyState icon={Calendar} title="No events yet" description="Add events to see how they break down by category." />
+          )}
+        </GlassCard>
 
         {/* Recent Activity */}
-        <div className="lg:col-span-12 card p-5">
+        <GlassCard className="lg:col-span-12 p-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="font-semibold">Recent Activity</div>
-            <Link to="/activities" className="text-xs text-blue-400 hover:text-blue-300">View All →</Link>
+            <h2 className="font-semibold text-fg">Recent Activity</h2>
+            <Link to="/activities" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">View all →</Link>
           </div>
-          
+
           {activitiesLoading ? (
-            <div className="grid md:grid-cols-3 gap-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="flex gap-3 px-4 py-3 bg-[#0F172A] rounded-xl border border-[#334155] animate-pulse">
-                  <div className="w-5 h-5 bg-slate-700 rounded-full" />
+            <div className="grid md:grid-cols-3 gap-3" role="status" aria-label="Loading recent activity">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3 px-4 py-3 bg-inset/60 rounded-xl border border-line-soft">
+                  <Skeleton className="w-5 h-5 rounded-full" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-slate-700 rounded w-3/4" />
-                    <div className="h-2 bg-slate-700 rounded w-1/4" />
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-2.5 w-1/4" />
                   </div>
                 </div>
               ))}
             </div>
           ) : activitiesError ? (
             <div className="py-8 text-center">
-              <div className="text-rose-400 mb-2">Unable to load recent activity.</div>
-              <button
-                onClick={fetchAll}
-                disabled={loading}
-                className="btn-secondary text-sm"
-              >
-                Retry
-              </button>
+              <div className="text-rose-400 mb-3 text-sm font-medium" role="alert">Unable to load recent activity.</div>
+              <GlassButton onClick={fetchAll} disabled={loading} size="sm">Retry</GlassButton>
             </div>
           ) : recentActivities && recentActivities.length > 0 ? (
             <div className="grid md:grid-cols-3 gap-3">
-              {recentActivities.map(act => (
-                <div key={act.id} className="flex gap-3 px-4 py-3 bg-[#0F172A] rounded-xl border border-[#334155]">
-                  <div className="mt-0.5 shrink-0">
-                    {act.action_type.startsWith('CONTACT_') && <Users size={18} className="text-blue-400" />}
-                    {act.action_type.startsWith('EVENT_') && <Calendar size={18} className="text-purple-400" />}
-                    {(act.action_type === 'WISH_SENT' || act.action_type === 'GREETING_CARD_SENT') && <Mail size={18} className="text-emerald-400" />}
-                    {act.action_type === 'WISH_SCHEDULED' && <Clock size={18} className="text-amber-400" />}
-                    {(act.action_type === 'WISH_GENERATED' || act.action_type === 'AI_GREETING_GENERATED') && <Sparkles size={18} className="text-indigo-400" />}
-                    {act.action_type.startsWith('GREETING_CARD_') && <Gift size={18} className="text-pink-400" />}
-                    {!['CONTACT_', 'EVENT_', 'WISH_SENT', 'GREETING_CARD_SENT', 'WISH_SCHEDULED', 'WISH_GENERATED', 'AI_GREETING_GENERATED', 'GREETING_CARD_'].some(prefix => act.action_type.startsWith(prefix)) && <Clock size={18} className="text-slate-400" />}
-                  </div>
+              {recentActivities.map((act) => (
+                <div key={act.id} className="flex gap-3 px-4 py-3 bg-inset/60 hover:bg-inset rounded-xl border border-line-soft transition-colors">
+                  <div className="mt-0.5 shrink-0" aria-hidden="true">{ACTIVITY_ICON(act.action_type)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-slate-200 truncate" title={act.title}>{act.title}</div>
-                    <div className="text-xs text-[#64748B] mt-0.5">{act.relative_time}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{act.relative_time}</div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="py-8">
+            <div className="py-4">
               <EmptyState
                 icon={Clock}
                 title="No recent activity"
@@ -376,7 +360,7 @@ const Dashboard = () => {
               />
             </div>
           )}
-        </div>
+        </GlassCard>
       </div>
     </div>
   );

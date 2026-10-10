@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Heart, Edit2, Copy, Trash2, Calendar } from 'lucide-react';
+import { Plus, Search, Heart, Edit2, Copy, Trash2, Calendar, Download } from 'lucide-react';
 import { cardsAPI } from '../../services/greetingCardsAPI';
 import toast from 'react-hot-toast';
 
 export default function MyGreetingCards() {
+  const [searchParams] = useSearchParams();
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q !== null && q !== search) {
+      setSearch(q);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchCards();
@@ -47,6 +55,43 @@ export default function MyGreetingCards() {
     }
   };
 
+  const handleExportCard = async (card) => {
+    const toastId = toast.loading('Exporting greeting card...');
+    const safeTitle = (card.title || 'greeting-card').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'greeting-card';
+    try {
+      if (card.preview_image_url) {
+        const res = await fetch(card.preview_image_url);
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeTitle}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        toast.dismiss(toastId);
+        toast.success('Card downloaded successfully!');
+      } else {
+        const res = await cardsAPI.exportCard(card.id, 'png');
+        const url = window.URL.createObjectURL(new Blob([res.data], { type: 'image/png' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeTitle}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        toast.dismiss(toastId);
+        toast.success('Card downloaded successfully!');
+      }
+    } catch {
+      toast.dismiss(toastId);
+      toast('Opening editor to export card...', { icon: 'ℹ️' });
+      navigate(`/greeting-cards/create/${card.id}`);
+    }
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this card?')) return;
     try {
@@ -61,11 +106,11 @@ export default function MyGreetingCards() {
   const filtered = cards.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="p-6 bg-[#0B0F19] min-h-screen text-slate-100 space-y-6">
+    <div className="p-6 bg-inset min-h-screen text-slate-100 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-fg flex items-center gap-2">
             My Greeting Cards
           </h1>
           <p className="text-xs text-slate-400">View and manage your created templates and custom cards</p>
@@ -80,15 +125,15 @@ export default function MyGreetingCards() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex gap-4 items-center bg-[#131926] p-3 rounded-2xl border border-slate-800">
-        <div className="flex items-center gap-2 bg-[#1A2234] border border-slate-700/50 rounded-xl px-3 py-1.5 flex-1 max-w-sm">
+      <div className="flex gap-4 items-center bg-inset p-3 rounded-2xl border border-line-soft">
+        <div className="flex items-center gap-2 bg-surface border border-line/50 rounded-xl px-3 py-1.5 flex-1 max-w-sm">
           <Search size={14} className="text-slate-400" />
           <input
             type="text"
             placeholder="Search cards by title..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent border-none text-xs text-white outline-none w-full"
+            className="bg-transparent border-none text-xs text-fg outline-none w-full"
           />
         </div>
       </div>
@@ -97,13 +142,13 @@ export default function MyGreetingCards() {
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-[#131926] rounded-2xl h-64 border border-slate-800 animate-pulse" />
+            <div key={i} className="bg-inset rounded-2xl h-64 border border-line-soft animate-pulse" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-slate-800 rounded-3xl bg-[#131926]/40">
+        <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-line-soft rounded-3xl bg-inset/40">
           <Calendar size={48} className="mb-4 text-slate-600" />
-          <h3 className="text-white font-semibold mb-1 text-sm">No Cards Found</h3>
+          <h3 className="text-fg font-semibold mb-1 text-sm">No Cards Found</h3>
           <p className="text-xs max-w-xs text-center">Start designing by template or creating a custom event card from scratch</p>
         </div>
       ) : (
@@ -115,10 +160,10 @@ export default function MyGreetingCards() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#131926] rounded-2xl border border-slate-800 overflow-hidden hover:border-slate-700 transition-all flex flex-col group"
+              className="bg-inset rounded-2xl border border-line-soft overflow-hidden hover:border-line transition-all flex flex-col group"
             >
               {/* Preview image */}
-              <div className="relative aspect-square bg-[#0e121b] flex items-center justify-center overflow-hidden border-b border-slate-800">
+              <div className="relative aspect-square bg-inset flex items-center justify-center overflow-hidden border-b border-line-soft">
                 {card.preview_image_url ? (
                   <img src={card.preview_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300" />
                 ) : (
@@ -136,32 +181,39 @@ export default function MyGreetingCards() {
               {/* Card Meta */}
               <div className="p-4 flex-1 flex flex-col justify-between">
                 <div>
-                  <h3 className="text-white font-semibold text-xs truncate mb-1">{card.title}</h3>
+                  <h3 className="text-fg font-semibold text-xs truncate mb-1">{card.title}</h3>
                   <div className="flex justify-between items-center text-[10px] text-slate-400">
-                    <span className="bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700/30">{card.occasion}</span>
+                    <span className="bg-raised/80 px-2 py-0.5 rounded-full border border-line/30">{card.occasion}</span>
                     <span>{card.recipient_name ? `For: ${card.recipient_name}` : ''}</span>
                   </div>
                 </div>
 
                 {/* Card actions */}
-                <div className="flex justify-end gap-1.5 mt-4 pt-3 border-t border-slate-800/60">
+                <div className="flex justify-end gap-1.5 mt-4 pt-3 border-t border-line-soft/60">
                   <button
                     onClick={() => navigate(`/greeting-cards/create/${card.id}`)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-fg hover:bg-raised transition-all"
                     title="Edit Card"
                   >
                     <Edit2 size={13} />
                   </button>
                   <button
                     onClick={() => handleDuplicate(card.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-fg hover:bg-raised transition-all"
                     title="Duplicate Card"
                   >
                     <Copy size={13} />
                   </button>
                   <button
+                    onClick={() => handleExportCard(card)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-raised transition-all"
+                    title="Export / Download Card"
+                  >
+                    <Download size={13} />
+                  </button>
+                  <button
                     onClick={() => handleDelete(card.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-all"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-raised transition-all"
                     title="Delete Card"
                   >
                     <Trash2 size={13} />

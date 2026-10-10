@@ -118,7 +118,7 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 glass-overlay"
         onClick={onCancel}
       >
         <motion.div
@@ -126,19 +126,19 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.94, opacity: 0, y: 12 }}
           transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-          className="w-full max-w-lg bg-[#0F1422] border border-[#334155] rounded-2xl overflow-hidden shadow-2xl"
+          className="w-full max-w-lg bg-inset border border-line rounded-2xl overflow-hidden shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1E293B]">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-line-soft">
             <div className="flex items-center gap-2">
               <Maximize size={16} className="text-indigo-400" />
-              <h3 className="text-sm font-bold text-[#F8FAFC]">Crop Photo</h3>
+              <h3 className="text-sm font-bold text-fg">Crop Photo</h3>
             </div>
             <button
               type="button"
               onClick={onCancel}
-              className="p-1.5 rounded-lg bg-[#1E293B] hover:bg-[#334155] text-slate-300 transition-all"
+              className="p-1.5 rounded-lg bg-surface hover:bg-raised-hover text-slate-300 transition-all"
               aria-label="Close"
             >
               <X size={15} />
@@ -146,7 +146,7 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
           </div>
 
           {/* Cropper */}
-          <div className="relative h-72 bg-[#0B0F19]">
+          <div className="relative h-72 bg-inset">
             <Cropper
               image={imageSrc}
               crop={crop}
@@ -163,7 +163,7 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
           </div>
 
           {/* Crop shape toggle */}
-          <div className="flex items-center gap-2 px-5 py-3 border-t border-[#1E293B]">
+          <div className="flex items-center gap-2 px-5 py-3 border-t border-line-soft">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Shape</span>
             <div className="flex gap-1.5">
               {shapeButtons.map((b) => (
@@ -174,7 +174,7 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
                     shape === b.key
                       ? 'bg-indigo-600 text-white border-indigo-500'
-                      : 'bg-[#1E293B] text-slate-300 border-[#334155] hover:border-indigo-500/40'
+                      : 'bg-surface text-slate-300 border-line hover:border-indigo-500/40'
                   }`}
                 >
                   {b.icon}
@@ -185,7 +185,7 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
           </div>
 
           {/* Zoom + Rotation sliders */}
-          <div className="space-y-3 px-5 py-3 border-t border-[#1E293B]">
+          <div className="space-y-3 px-5 py-3 border-t border-line-soft">
             <div className="flex items-center gap-3">
               <ZoomIn size={14} className="text-slate-400 shrink-0" />
               <input
@@ -207,11 +207,11 @@ const CropImageModal = ({ imageSrc, onCancel, onCropComplete }: CropImageModalPr
           </div>
 
           {/* Footer actions */}
-          <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-[#1E293B]">
+          <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-line-soft">
             <button
               type="button"
               onClick={handleReset}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1E293B] hover:bg-[#334155] text-slate-300 text-xs font-semibold transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface hover:bg-raised-hover text-slate-300 text-xs font-semibold transition-all"
             >
               <RefreshCw size={13} />
               Reset

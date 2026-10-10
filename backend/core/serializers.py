@@ -19,10 +19,39 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
+    full_name = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name', 'display_name', 'profile']
+
+    def get_full_name(self, obj):
+        name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
+        return name or obj.username
+
+    def get_display_name(self, obj):
+        return self.get_full_name(obj)
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    username = serializers.CharField(max_length=150, required=False)
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    timezone = serializers.CharField(max_length=100, required=False)
+    preferred_language = serializers.CharField(max_length=10, required=False)
+
+    def validate_first_name(self, value):
+        return value.strip() if value else ''
+
+    def validate_last_name(self, value):
+        return value.strip() if value else ''
+
+    def validate_username(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Username cannot be empty.")
+        return value.strip()
 
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
@@ -130,24 +159,50 @@ class AIGenerateRequestSerializer(serializers.Serializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
+    related_user_id = serializers.IntegerField(source='related_user.id', read_only=True)
+    related_username = serializers.CharField(source='related_user.username', read_only=True)
+    related_user_display_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
         fields = '__all__'
         read_only_fields = ['user', 'created_at']
 
+    def get_related_user_display_name(self, obj):
+        if not obj.related_user:
+            return None
+        full = f"{obj.related_user.first_name or ''} {obj.related_user.last_name or ''}".strip()
+        return full or obj.related_user.username
+
 class SubscriptionTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubscriptionTransaction
         fields = '__all__'
-        read_only_fields = ['user', 'created_at']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'transaction_id', 'amount', 'currency', 'plan', 'status']
 
 class AuditLogSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
+    username = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
-        fields = ['id', 'user', 'username', 'action', 'details', 'ip_address', 'created_at']
+        fields = [
+            'id', 'user', 'username', 'display_name', 'actor_name',
+            'action', 'event_type', 'previous_name', 'updated_name',
+            'details', 'ip_address', 'created_at'
+        ]
         read_only_fields = ['created_at']
+
+    def get_display_name(self, obj):
+        if obj.actor_name:
+            return obj.actor_name
+        if obj.user:
+            full = f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip()
+            return full or obj.user.username
+        return 'System'
+
+    def get_username(self, obj):
+        return self.get_display_name(obj)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -324,3 +379,38 @@ class ActivityLogSerializer(serializers.ModelSerializer):
         else:
             months = diff.days // 30
             return f"{months} month{'s' if months > 1 else ''} ago"
+
+
+class ForgotPasswordRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class VerifyResetOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    otp = serializers.CharField(required=True, min_length=6, max_length=6)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+    def validate_otp(self, value):
+        val = str(value).strip()
+        if not val.isdigit() or len(val) != 6:
+            raise serializers.ValidationError("Verification code must be exactly 6 digits.")
+        return val
+
+
+class ResetPasswordSubmitSerializer(serializers.Serializer):
+    reset_token = serializers.CharField(required=True, min_length=16, max_length=128)
+    password = serializers.CharField(required=True, write_only=True, min_length=8)
+    confirm_password = serializers.CharField(required=False, write_only=True)
+
+    def validate(self, attrs):
+        password = attrs.get('password')
+        confirm_password = attrs.get('confirm_password')
+        if confirm_password and password != confirm_password:
+            raise serializers.ValidationError({'confirm_password': "Passwords do not match."})
+        return attrs
+

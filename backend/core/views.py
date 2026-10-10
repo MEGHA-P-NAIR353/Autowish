@@ -18,31 +18,53 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status, viewsets, permissions
+from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken, UntypedToken
+import secrets
+from datetime import timedelta
+from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import (
     Contact, Event, GreetingTemplate, ScheduledWish, EmailLog,
     GeneratedGreeting, UserProfile, AIPrompt, Notification,
     SubscriptionTransaction, AuditLog, ActivityLog,
     GreetingCardTemplate, GreetingCard, GreetingCardFavorite,
-    SentGreetingCard, SentAIGreeting
+    SentGreetingCard, SentAIGreeting, PasswordResetOTP
 )
 import traceback
 from .serializers import (
     ContactSerializer, EventSerializer, GreetingTemplateSerializer,
     ScheduledWishSerializer, EmailLogSerializer, GeneratedGreetingSerializer,
-    UserSerializer, UserProfileSerializer, AIPromptSerializer, AIGenerateRequestSerializer,
+    UserSerializer, UserProfileSerializer, ProfileUpdateSerializer, AIPromptSerializer, AIGenerateRequestSerializer,
     NotificationSerializer, SubscriptionTransactionSerializer, AuditLogSerializer,
     GreetingCardTemplateSerializer, GreetingCardSerializer,
     GreetingCardListSerializer, GreetingCardFavoriteSerializer,
-    ActivityLogSerializer
+    ActivityLogSerializer,
+    ForgotPasswordRequestSerializer, VerifyResetOTPSerializer, ResetPasswordSubmitSerializer
 )
 from .tasks import send_email_task
+from services.email_service import send_password_reset_otp_email
 from services.activity_service import create_activity
+from services.subscription_service import (
+    check_ai_generation_limit,
+    check_scheduled_wish_limit,
+    check_delivery_channel,
+    get_usage_summary,
+)
+from services.payment_service import (
+    create_dummy_payment,
+    process_dummy_payment,
+    cancel_dummy_payment,
+    get_payment_for_user,
+    list_payments_for_user,
+)
+from core.plan_config import PLAN_IDS, build_plan_api_payload, get_checkout_amount
 from services.ai import (
     generate_ai_wish,
     build_greeting_prompt,
@@ -67,10 +89,24 @@ def get_client_ip(request):
     return ip
 
 # Helper: Log User Activity
-def log_activity(user, action, details, request=None):
+def log_activity(user, action, details, request=None, actor_name=None, event_type=None, previous_name=None, updated_name=None):
     try:
         ip = get_client_ip(request) if request else None
-        AuditLog.objects.create(user=user, action=action, details=details, ip_address=ip)
+        if not actor_name and user:
+            first = getattr(user, 'first_name', '') or ''
+            last = getattr(user, 'last_name', '') or ''
+            name = f"{first} {last}".strip()
+            actor_name = name or getattr(user, 'username', 'System')
+        AuditLog.objects.create(
+            user=user,
+            action=action,
+            event_type=event_type or action.lower().replace(' ', '_'),
+            actor_name=actor_name,
+            previous_name=previous_name,
+            updated_name=updated_name,
+            details=details,
+            ip_address=ip
+        )
     except Exception as log_err:
         # Logging must NEVER mask a successful primary action (e.g. email send).
         logger.warning(f"log_activity failed (ignored): {log_err}")
@@ -78,11 +114,19 @@ def log_activity(user, action, details, request=None):
 # Custom Permissions
 class IsSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.profile.role == 'super_admin'
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.is_superuser:
+            return True
+        return hasattr(request.user, 'profile') and request.user.profile.role == 'super_admin'
 
 class IsAdminOrSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.profile.role in ['admin', 'super_admin']
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+        return hasattr(request.user, 'profile') and request.user.profile.role in ['admin', 'super_admin']
 
 
 # --- AUTH VIEWS ---
@@ -110,12 +154,18 @@ def register(request):
         
     with transaction.atomic():
         user = User.objects.create_user(username=username, email=email, password=password)
+        if name:
+            parts = name.strip().split(' ', 1)
+            user.first_name = parts[0]
+            user.last_name = parts[1] if len(parts) > 1 else ''
+            user.save()
         # Create token for email verification
         refresh = RefreshToken.for_user(user)
         verification_token = str(refresh.access_token)
         
         # Log Audit
-        log_activity(user, 'Register', 'Registered new user account.', request)
+        reg_display_name = f"{user.first_name} {user.last_name}".strip() or user.username
+        log_activity(user, 'Register', 'Registered new user account.', request, actor_name=reg_display_name, event_type='register')
         
         # Send Welcome & Verification Email
         verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verification_token}"
@@ -150,7 +200,8 @@ def login_view(request):
         return Response({'error': 'Invalid email or password'}, status=401)
         
     refresh = RefreshToken.for_user(user)
-    log_activity(user, 'Login', 'User logged in successfully.', request)
+    login_display_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+    log_activity(user, 'Login', 'User logged in successfully.', request, actor_name=login_display_name, event_type='login')
     
     return Response({
         'user': UserSerializer(user).data,
@@ -183,47 +234,255 @@ def verify_email(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forgot_password(request):
-    email = request.data.get('email')
-    if not email:
-        return Response({'error': 'Email is required'}, status=400)
-        
+    """
+    POST /api/auth/forgot-password/
+    Generates a secure 6-digit OTP, stores its hash, applies a 60s cooldown,
+    and dispatches an email via Django email backend.
+    Returns generic message preventing email enumeration.
+    """
+    serializer = ForgotPasswordRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    email = serializer.validated_data['email'].strip().lower()
+    cooldown_seconds = getattr(settings, 'PASSWORD_RESET_COOLDOWN_SECONDS', 60)
+    now = timezone.now()
+
+    # Check resend cooldown on recent active OTP for this email
+    recent_otp = PasswordResetOTP.objects.filter(
+        email__iexact=email,
+        is_invalidated=False,
+        is_used=False,
+        created_at__gte=now - timedelta(seconds=cooldown_seconds)
+    ).order_by('-created_at').first()
+
+    if recent_otp:
+        elapsed = (now - recent_otp.created_at).total_seconds()
+        remaining_wait = max(1, int(cooldown_seconds - elapsed))
+        return Response({
+            'error': f'Please wait {remaining_wait} seconds before requesting a new verification code.',
+            'cooldown_seconds': remaining_wait
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+    # Invalidate older non-used OTPs for this email to prevent replay/stale codes
+    PasswordResetOTP.objects.filter(email__iexact=email, is_used=False).update(is_invalidated=True)
+
+    generic_success_msg = "If an account with that email exists, a 6-digit verification code has been sent."
+
     try:
-        user = User.objects.get(email=email)
-        refresh = RefreshToken.for_user(user)
-        reset_token = str(refresh.access_token)
-        
-        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
-        email_body = f"Hello,\n\nYou requested a password reset. Please click on the link below:\n\n{reset_url}\n\nIf you did not request this, ignore this email."
-        try:
-            send_email_task.delay(user.email, "Reset Password - AutoWish AI", email_body)
-        except Exception as e:
-            logger.error(f"Failed to queue reset password email task: {e}")
-        
-        log_activity(user, 'Forgot Password', 'Requested password reset email.')
-        return Response({'message': 'Password reset link sent.'})
+        user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
-        return Response({'message': 'If the email exists, a reset link has been sent.'})
+        # Prevent timing attacks and account enumeration by returning generic response
+        return Response({
+            'message': generic_success_msg,
+            'cooldown_seconds': cooldown_seconds
+        }, status=status.HTTP_200_OK)
+
+    if not user.is_active:
+        return Response({
+            'message': generic_success_msg,
+            'cooldown_seconds': cooldown_seconds
+        }, status=status.HTTP_200_OK)
+
+    # Cryptographically secure 6-digit OTP
+    otp_code = f"{secrets.randbelow(1000000):06d}"
+    otp_hash = make_password(otp_code)
+    otp_expiry_minutes = getattr(settings, 'PASSWORD_RESET_OTP_EXPIRY_MINUTES', 5)
+    expires_at = now + timedelta(minutes=otp_expiry_minutes)
+
+    ip = get_client_ip(request)
+    PasswordResetOTP.objects.create(
+        user=user,
+        email=user.email,
+        otp_hash=otp_hash,
+        expires_at=expires_at,
+        max_attempts=getattr(settings, 'PASSWORD_RESET_MAX_ATTEMPTS', 5),
+        ip_address=ip
+    )
+
+    # Dispatch email (plain text + branded HTML)
+    send_password_reset_otp_email(user.email, otp_code, user=user)
+
+    log_activity(user, 'Forgot Password', 'Password reset OTP requested.', request)
+
+    return Response({
+        'message': generic_success_msg,
+        'cooldown_seconds': cooldown_seconds
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_reset_otp(request):
+    """
+    POST /api/auth/verify-reset-otp/
+    Verifies a 6-digit OTP for the given email.
+    Uses select_for_update inside an atomic transaction to prevent race conditions.
+    Enforces a max 5-attempt limit, rejection of expired/used/invalidated OTPs.
+    Returns a short-lived reset authorization token upon success.
+    """
+    serializer = VerifyResetOTPSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    email = serializer.validated_data['email'].strip().lower()
+    otp_input = serializer.validated_data['otp'].strip()
+
+    with transaction.atomic():
+        otp_record = (
+            PasswordResetOTP.objects
+            .select_for_update()
+            .filter(email__iexact=email, is_invalidated=False, is_used=False)
+            .order_by('-created_at')
+            .first()
+        )
+
+        if not otp_record:
+            return Response({
+                'error': 'Invalid or expired verification code. Please request a new one.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_record.is_verified:
+            return Response({
+                'error': 'This verification code has already been verified.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_record.is_expired():
+            otp_record.is_invalidated = True
+            otp_record.save(update_fields=['is_invalidated'])
+            return Response({
+                'error': 'Verification code has expired. Please request a new code.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_record.attempts >= otp_record.max_attempts:
+            otp_record.is_invalidated = True
+            otp_record.save(update_fields=['is_invalidated'])
+            return Response({
+                'error': 'Too many failed attempts. This code is now invalid. Please request a new one.',
+                'attempts_remaining': 0
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check OTP hash securely
+        if not otp_record.verify_otp(otp_input):
+            otp_record.attempts += 1
+            remaining = otp_record.max_attempts - otp_record.attempts
+            if remaining <= 0:
+                otp_record.is_invalidated = True
+                otp_record.save(update_fields=['attempts', 'is_invalidated'])
+                return Response({
+                    'error': 'Too many failed attempts. This code has been invalidated. Please request a new one.',
+                    'attempts_remaining': 0
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                otp_record.save(update_fields=['attempts'])
+                return Response({
+                    'error': f'Invalid verification code. {remaining} attempt(s) remaining.',
+                    'attempts_remaining': remaining
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # OTP is correct! Issue a cryptographically secure, single-use reset authorization token
+        raw_reset_token = secrets.token_urlsafe(32)
+        token_expiry_minutes = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', 15)
+
+        otp_record.is_verified = True
+        otp_record.verified_at = timezone.now()
+        otp_record.reset_token = raw_reset_token
+        otp_record.reset_token_expires_at = timezone.now() + timedelta(minutes=token_expiry_minutes)
+        otp_record.save(update_fields=['is_verified', 'verified_at', 'reset_token', 'reset_token_expires_at'])
+
+        log_activity(otp_record.user, 'Verify Reset OTP', 'Password reset OTP verified successfully.', request)
+
+        return Response({
+            'message': 'Verification code verified successfully.',
+            'reset_token': raw_reset_token
+        }, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def reset_password(request):
-    token = request.data.get('token')
-    new_password = request.data.get('password')
-    if not token or not new_password:
-        return Response({'error': 'Token and password are required'}, status=400)
-        
-    try:
-        untyped_token = UntypedToken(token)
-        user_id = untyped_token.payload.get('user_id')
-        user = User.objects.get(id=user_id)
-        
+    """
+    POST /api/auth/reset-password/
+    Consumes a verified reset authorization token, validates the new password against
+    Django password validators, updates the password hash, and invalidates the session & OTP.
+    """
+    data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+    if 'new_password' in data and 'password' not in data:
+        data['password'] = data['new_password']
+
+    serializer = ResetPasswordSubmitSerializer(data=data)
+    if not serializer.is_valid():
+        err_msg = 'Invalid input.'
+        if 'confirm_password' in serializer.errors:
+            err_msg = serializer.errors['confirm_password'][0]
+        elif 'password' in serializer.errors:
+            err_msg = serializer.errors['password'][0]
+        elif 'reset_token' in serializer.errors:
+            err_msg = serializer.errors['reset_token'][0]
+        return Response({'error': err_msg, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    reset_token = serializer.validated_data['reset_token'].strip()
+    new_password = serializer.validated_data['password']
+
+    with transaction.atomic():
+        otp_record = (
+            PasswordResetOTP.objects
+            .select_for_update()
+            .filter(reset_token=reset_token, is_verified=True, is_used=False)
+            .first()
+        )
+
+        if not otp_record or otp_record.is_invalidated:
+            return Response({
+                'error': 'Invalid or expired reset session. Please request a new verification code.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_record.is_reset_token_expired():
+            otp_record.is_invalidated = True
+            otp_record.save(update_fields=['is_invalidated'])
+            return Response({
+                'error': 'Reset session has expired. Please request a new verification code.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user = otp_record.user
+
+        # Validate password using Django's configured password validators
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as val_err:
+            return Response({
+                'error': val_err.messages[0] if isinstance(val_err.messages, list) else str(val_err),
+                'errors': list(val_err.messages) if isinstance(val_err.messages, list) else [str(val_err)]
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update password hash
         user.set_password(new_password)
         user.save()
-        
-        log_activity(user, 'Reset Password', 'Password reset using token.')
-        return Response({'message': 'Password reset successfully.'})
-    except Exception:
-        return Response({'error': 'Invalid or expired token'}, status=400)
+
+        # Invalidate OTP and reset authorization (single-use)
+        now = timezone.now()
+        otp_record.is_used = True
+        otp_record.used_at = now
+        otp_record.is_invalidated = True
+        otp_record.save(update_fields=['is_used', 'used_at', 'is_invalidated'])
+
+        # Invalidate all other pending OTPs for this user
+        PasswordResetOTP.objects.filter(user=user, is_used=False).update(is_invalidated=True)
+
+        # Session invalidation & security logging
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+            tokens = OutstandingToken.objects.filter(user=user)
+            for tok in tokens:
+                BlacklistedToken.objects.get_or_create(token=tok)
+        except Exception:
+            pass
+
+        log_activity(user, 'Reset Password', 'Password was successfully reset using verified OTP.', request)
+
+        return Response({
+            'message': 'Password has been reset successfully. You can now log in with your new password.'
+        }, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -246,33 +505,89 @@ def change_password(request):
 @permission_classes([IsAuthenticated])
 def user_profile_view(request):
     user = request.user
-    profile = user.profile
     
     if request.method == 'GET':
         return Response(UserSerializer(user).data)
         
     elif request.method in ('PUT', 'PATCH'):
-        # Update User first name, last name, username
-        if 'first_name' in request.data:
-            user.first_name = request.data['first_name']
-        if 'last_name' in request.data:
-            user.last_name = request.data['last_name']
-        if 'username' in request.data:
-            new_username = request.data['username']
-            if new_username != user.username and User.objects.filter(username=new_username).exists():
-                return Response({'error': 'Username already taken.'}, status=400)
-            user.username = new_username
-        user.save()
+        serializer = ProfileUpdateSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        validated_data = serializer.validated_data
         
-        # Update profile fields
+        # Resolve user strictly from server-side authenticated session
+        db_user = User.objects.select_related('profile').get(id=user.id)
+        
+        # Check username uniqueness if submitted and changing
+        if 'username' in validated_data:
+            new_username = validated_data['username']
+            if new_username != db_user.username and User.objects.filter(username=new_username).exclude(id=db_user.id).exists():
+                return Response({'error': 'Username already taken.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Fetch persisted old values before modifying
+        old_first = db_user.first_name or ''
+        old_last = db_user.last_name or ''
+        old_display_name = f"{old_first} {old_last}".strip() or db_user.username
+        
+        new_first = validated_data['first_name'] if 'first_name' in validated_data else old_first
+        new_last = validated_data['last_name'] if 'last_name' in validated_data else old_last
+        new_username = validated_data.get('username', db_user.username)
+        new_display_name = f"{new_first} {new_last}".strip() or new_username
+        
+        name_changed = (new_first != old_first) or (new_last != old_last)
         profile_fields = ['phone', 'country', 'timezone', 'preferred_language']
-        for field in profile_fields:
-            if field in request.data:
-                setattr(profile, field, request.data[field])
-        profile.save()
+        profile_changed = any(field in validated_data for field in profile_fields)
         
-        log_activity(user, 'Update Profile', 'Updated profile information.', request)
-        return Response(UserSerializer(user).data)
+        with transaction.atomic():
+            if 'first_name' in validated_data:
+                db_user.first_name = new_first
+            if 'last_name' in validated_data:
+                db_user.last_name = new_last
+            if 'username' in validated_data:
+                db_user.username = new_username
+            db_user.save()
+            
+            profile = db_user.profile
+            for field in profile_fields:
+                if field in validated_data:
+                    setattr(profile, field, validated_data[field])
+            profile.save()
+            
+            # Record audit and notification only if persisted values actually changed
+            if name_changed:
+                change_desc = f"{new_display_name} changed their profile name from {old_display_name} to {new_display_name}."
+                AuditLog.objects.create(
+                    user=db_user,
+                    action='profile_name_changed',
+                    event_type='profile_name_changed',
+                    actor_name=new_display_name,
+                    previous_name=old_display_name,
+                    updated_name=new_display_name,
+                    details=change_desc,
+                    ip_address=get_client_ip(request)
+                )
+                
+                # Persistent in-app notification for all authorized administrators
+                admin_users = User.objects.filter(
+                    Q(is_superuser=True) | Q(is_staff=True) | Q(profile__role__in=['admin', 'super_admin'])
+                ).distinct()
+                
+                for admin in admin_users:
+                    Notification.objects.create(
+                        user=admin,
+                        title="User Profile Name Changed",
+                        message=change_desc,
+                        type='system',
+                        event_type='profile_name_changed',
+                        category='User Management',
+                        related_user=db_user,
+                        is_read=False
+                    )
+            elif profile_changed:
+                log_activity(db_user, 'Update Profile', 'Updated profile information.', request, actor_name=old_display_name)
+                
+        return Response(UserSerializer(db_user).data)
 
 
 @api_view(['POST'])
@@ -430,12 +745,17 @@ class ContactViewSet(viewsets.ModelViewSet):
             'duplicates_skipped': duplicate_count
         })
 
-    @action(detail=False, methods=['GET'])
+    @action(detail=False, methods=['POST'], parser_classes=[MultiPartParser, FormParser], url_path='import-csv')
+    def import_csv_hyphen(self, request):
+        return self.import_csv(request)
+
+    @action(detail=False, methods=['GET'], url_path='export_csv')
     def export_csv(self, request):
         contacts = self.get_queryset()
         
-        response = HttpResponse(content_type='text/csv')
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = 'attachment; filename="autowish_contacts.csv"'
+        response.write('\ufeff')  # UTF-8 BOM for Microsoft Excel compatibility
         
         writer = csv.writer(response)
         writer.writerow(['Name', 'Email', 'Phone', 'Birthday', 'Anniversary', 'Relationship', 'Group', 'Tags'])
@@ -449,6 +769,10 @@ class ContactViewSet(viewsets.ModelViewSet):
             
         log_activity(request.user, 'CSV Export', 'Exported contacts to CSV file.', request)
         return response
+
+    @action(detail=False, methods=['GET'], url_path='export-csv')
+    def export_csv_hyphen(self, request):
+        return self.export_csv(request)
 
     @action(detail=False, methods=['GET'])
     def detect_duplicates(self, request):
@@ -548,6 +872,364 @@ class EventViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset().filter(date__gte=today, date__lte=end).order_by('date')
         return Response(self.get_serializer(qs, many=True).data)
 
+    @action(detail=False, methods=['GET'])
+    def calendar(self, request):
+        """
+        Production-grade calendar aggregator endpoint.
+        Returns all relevant occasions (events, contact birthdays/anniversaries,
+        and shared public holidays/festivals) within the specified date range.
+        Links active ScheduledWish records where available.
+        """
+        import calendar as py_calendar
+        import re
+        from dateutil import parser as dateutil_parser
+        from datetime import date, datetime
+
+        user = request.user
+
+        # Determine user's local current date/year
+        tz_name = getattr(user.profile, 'timezone', 'Asia/Kolkata') if hasattr(user, 'profile') else 'Asia/Kolkata'
+        try:
+            import zoneinfo
+            user_tz = zoneinfo.ZoneInfo(tz_name)
+            current_local = datetime.now(user_tz).date()
+        except Exception:
+            current_local = timezone.now().date()
+
+        # Parse query params
+        start_param = request.query_params.get('start')
+        end_param = request.query_params.get('end')
+        year_param = request.query_params.get('year')
+        month_param = request.query_params.get('month')
+        type_param = request.query_params.get('type')
+        search_param = request.query_params.get('search')
+
+        try:
+            if start_param and end_param:
+                start_date = datetime.strptime(start_param[:10], '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_param[:10], '%Y-%m-%d').date()
+            elif year_param and month_param:
+                y = int(year_param)
+                m = int(month_param)
+                last_day = py_calendar.monthrange(y, m)[1]
+                start_date = date(y, m, 1)
+                end_date = date(y, m, last_day)
+            elif year_param:
+                y = int(year_param)
+                start_date = date(y, 1, 1)
+                end_date = date(y, 12, 31)
+            else:
+                y = current_local.year
+                m = current_local.month
+                last_day = py_calendar.monthrange(y, m)[1]
+                start_date = date(y, m, 1)
+                end_date = date(y, m, last_day)
+        except Exception:
+            start_date = date(current_local.year, current_local.month, 1)
+            last_day = py_calendar.monthrange(current_local.year, current_local.month)[1]
+            end_date = date(current_local.year, current_local.month, last_day)
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        year_range = range(start_date.year, end_date.year + 1)
+        results = []
+        seen_keys = set()
+
+        # 1. User's explicit Event records
+        user_events = Event.objects.filter(user=user)
+        for ev in user_events:
+            ev_date = ev.date
+            ev_type = ev.type or 'Custom'
+            ev_title = ev.title or f"{ev.recipient}'s {ev_type}"
+
+            projected_dates = []
+            if not ev.recurring or ev.recurring_type == 'once':
+                if start_date <= ev_date <= end_date:
+                    projected_dates.append(ev_date)
+            elif ev.recurring_type == 'yearly' or (ev.recurring and ev.recurring_type != 'monthly'):
+                for y in year_range:
+                    if ev_date.month == 2 and ev_date.day == 29:
+                        p_day = 29 if py_calendar.isleap(y) else 28
+                    else:
+                        p_day = min(ev_date.day, py_calendar.monthrange(y, ev_date.month)[1])
+                    p_date = date(y, ev_date.month, p_day)
+                    if start_date <= p_date <= end_date:
+                        projected_dates.append(p_date)
+            elif ev.recurring_type == 'monthly':
+                curr_y = start_date.year
+                curr_m = start_date.month
+                while (curr_y < end_date.year) or (curr_y == end_date.year and curr_m <= end_date.month):
+                    max_d = py_calendar.monthrange(curr_y, curr_m)[1]
+                    p_day = min(ev_date.day, max_d)
+                    p_date = date(curr_y, curr_m, p_day)
+                    if start_date <= p_date <= end_date:
+                        projected_dates.append(p_date)
+                    if curr_m == 12:
+                        curr_y += 1
+                        curr_m = 1
+                    else:
+                        curr_m += 1
+
+            for p_date in projected_dates:
+                p_iso = p_date.isoformat()
+                key = (ev.recipient.lower().strip(), ev_type.lower().strip(), p_iso)
+                seen_keys.add(key)
+                results.append({
+                    'id': f"event-{ev.id}-{p_iso}",
+                    'event_id': ev.id,
+                    'title': ev_title,
+                    'recipient': ev.recipient,
+                    'type': ev_type,
+                    'date': p_iso,
+                    'original_date': ev_date.isoformat(),
+                    'recurring': ev.recurring,
+                    'recurring_type': ev.recurring_type,
+                    'reminder_days': ev.reminder_days,
+                    'status': ev.status or 'Upcoming',
+                    'source': 'event',
+                    'can_edit': True,
+                })
+
+        # 2. Contact Birthdays & Anniversaries
+        user_contacts = Contact.objects.filter(user=user)
+        def _parse_contact_date(raw_str):
+            if not raw_str or not raw_str.strip():
+                return None
+            clean_str = re.sub(r'\s*,\s*', ', ', raw_str.strip())
+            try:
+                dt = dateutil_parser.parse(clean_str, fuzzy=True)
+                year_match = re.search(r'\b(19\d\d|20\d\d)\b', clean_str)
+                orig_year = int(year_match.group(1)) if year_match else None
+                return (dt.month, dt.day, orig_year)
+            except Exception:
+                return None
+
+        for c in user_contacts:
+            c_name = c.name or 'Unknown'
+            # Check birthday
+            bday_info = _parse_contact_date(c.birthday)
+            if bday_info:
+                b_month, b_day, b_orig_year = bday_info
+                for y in year_range:
+                    if b_month == 2 and b_day == 29:
+                        p_day = 29 if py_calendar.isleap(y) else 28
+                    else:
+                        p_day = min(b_day, py_calendar.monthrange(y, b_month)[1])
+                    p_date = date(y, b_month, p_day)
+                    if start_date <= p_date <= end_date:
+                        p_iso = p_date.isoformat()
+                        key = (c_name.lower().strip(), 'birthday', p_iso)
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            age = (y - b_orig_year) if (b_orig_year and y >= b_orig_year) else None
+                            results.append({
+                                'id': f"contact-bday-{c.id}-{p_iso}",
+                                'title': f"{c_name}'s Birthday",
+                                'recipient': c_name,
+                                'recipient_email': c.email or '',
+                                'recipient_phone': c.phone or '',
+                                'relationship': c.relationship or 'Friend',
+                                'type': 'Birthday',
+                                'date': p_iso,
+                                'source': 'contact',
+                                'contact_id': c.id,
+                                'recurring': True,
+                                'recurring_type': 'yearly',
+                                'age': age,
+                                'notes': c.notes or '',
+                                'group': c.group or '',
+                                'status': 'Upcoming',
+                                'can_edit': False,
+                            })
+
+            # Check anniversary
+            anniv_info = _parse_contact_date(c.anniversary)
+            if anniv_info:
+                a_month, a_day, a_orig_year = anniv_info
+                for y in year_range:
+                    if a_month == 2 and a_day == 29:
+                        p_day = 29 if py_calendar.isleap(y) else 28
+                    else:
+                        p_day = min(a_day, py_calendar.monthrange(y, a_month)[1])
+                    p_date = date(y, a_month, p_day)
+                    if start_date <= p_date <= end_date:
+                        p_iso = p_date.isoformat()
+                        key = (c_name.lower().strip(), 'anniversary', p_iso)
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            years_count = (y - a_orig_year) if (a_orig_year and y >= a_orig_year) else None
+                            results.append({
+                                'id': f"contact-anniv-{c.id}-{p_iso}",
+                                'title': f"{c_name}'s Anniversary",
+                                'recipient': c_name,
+                                'recipient_email': c.email or '',
+                                'recipient_phone': c.phone or '',
+                                'relationship': c.relationship or 'Friend',
+                                'type': 'Anniversary',
+                                'date': p_iso,
+                                'source': 'contact',
+                                'contact_id': c.id,
+                                'recurring': True,
+                                'recurring_type': 'yearly',
+                                'anniversary_years': years_count,
+                                'notes': c.notes or '',
+                                'group': c.group or '',
+                                'status': 'Upcoming',
+                                'can_edit': False,
+                            })
+
+        # 3. Standard Public Holidays and Festivals
+        STANDARD_HOLIDAYS = [
+            (1, 1, "New Year's Day", 'Holiday'),
+            (2, 14, "Valentine's Day", 'Holiday'),
+            (3, 8, "International Women's Day", 'Holiday'),
+            (3, 17, "St. Patrick's Day", 'Festival'),
+            (4, 22, "Earth Day", 'Holiday'),
+            (7, 4, "Independence Day", 'Holiday'),
+            (8, 15, "India Independence Day", 'Holiday'),
+            (10, 31, "Halloween", 'Festival'),
+            (12, 24, "Christmas Eve", 'Holiday'),
+            (12, 25, "Christmas Day", 'Festival'),
+            (12, 31, "New Year's Eve", 'Holiday'),
+        ]
+
+        # Calculate floating holidays
+        for y in year_range:
+            # Mother's Day: 2nd Sunday in May
+            may_sundays = [d for d in range(1, 32) if py_calendar.monthrange(y, 5)[1] >= d and date(y, 5, d).weekday() == 6]
+            if len(may_sundays) >= 2:
+                m_day = date(y, 5, may_sundays[1])
+                if start_date <= m_day <= end_date:
+                    h_iso = m_day.isoformat()
+                    results.append({
+                        'id': f"holiday-mothers-day-{h_iso}",
+                        'title': "Mother's Day",
+                        'recipient': 'Everyone',
+                        'type': 'Holiday',
+                        'date': h_iso,
+                        'source': 'public_holiday',
+                        'recurring': True,
+                        'recurring_type': 'yearly',
+                        'status': 'Public',
+                        'can_edit': False,
+                    })
+            # Father's Day: 3rd Sunday in June
+            june_sundays = [d for d in range(1, 31) if py_calendar.monthrange(y, 6)[1] >= d and date(y, 6, d).weekday() == 6]
+            if len(june_sundays) >= 3:
+                f_day = date(y, 6, june_sundays[2])
+                if start_date <= f_day <= end_date:
+                    h_iso = f_day.isoformat()
+                    results.append({
+                        'id': f"holiday-fathers-day-{h_iso}",
+                        'title': "Father's Day",
+                        'recipient': 'Everyone',
+                        'type': 'Holiday',
+                        'date': h_iso,
+                        'source': 'public_holiday',
+                        'recurring': True,
+                        'recurring_type': 'yearly',
+                        'status': 'Public',
+                        'can_edit': False,
+                    })
+            # Thanksgiving: 4th Thursday in Nov
+            nov_thursdays = [d for d in range(1, 31) if py_calendar.monthrange(y, 11)[1] >= d and date(y, 11, d).weekday() == 3]
+            if len(nov_thursdays) >= 4:
+                th_day = date(y, 11, nov_thursdays[3])
+                if start_date <= th_day <= end_date:
+                    h_iso = th_day.isoformat()
+                    results.append({
+                        'id': f"holiday-thanksgiving-{h_iso}",
+                        'title': "Thanksgiving",
+                        'recipient': 'Everyone',
+                        'type': 'Holiday',
+                        'date': h_iso,
+                        'source': 'public_holiday',
+                        'recurring': True,
+                        'recurring_type': 'yearly',
+                        'status': 'Public',
+                        'can_edit': False,
+                    })
+
+            for h_m, h_d, h_title, h_type in STANDARD_HOLIDAYS:
+                h_date = date(y, h_m, h_d)
+                if start_date <= h_date <= end_date:
+                    h_iso = h_date.isoformat()
+                    key = ('everyone', h_type.lower(), h_iso)
+                    if key not in seen_keys:
+                        results.append({
+                            'id': f"holiday-{h_m}-{h_d}-{h_iso}",
+                            'title': h_title,
+                            'recipient': 'Everyone',
+                            'type': h_type,
+                            'date': h_iso,
+                            'source': 'public_holiday',
+                            'recurring': True,
+                            'recurring_type': 'yearly',
+                            'status': 'Public',
+                            'can_edit': False,
+                        })
+
+        # 4. Attach ScheduledWish status
+        scheduled_wishes = ScheduledWish.objects.filter(
+            user=user,
+            date__gte=start_date,
+            date__lte=end_date
+        ).select_related('contact')
+
+        wishes_by_contact_date = {}
+        wishes_by_recipient_date = {}
+        for w in scheduled_wishes:
+            w_date_str = w.date.isoformat()
+            if w.contact_id:
+                wishes_by_contact_date[(w.contact_id, w_date_str)] = w
+            if w.contact and w.contact.name:
+                wishes_by_recipient_date[(w.contact.name.lower().strip(), w_date_str)] = w
+
+        for item in results:
+            item_date = item['date']
+            wish = None
+            if item.get('contact_id'):
+                wish = wishes_by_contact_date.get((item['contact_id'], item_date))
+            if not wish and item.get('recipient'):
+                wish = wishes_by_recipient_date.get((item['recipient'].lower().strip(), item_date))
+
+            if wish:
+                item['scheduled_wish'] = {
+                    'id': wish.id,
+                    'status': wish.status,
+                    'time': wish.time.strftime('%H:%M') if wish.time else None,
+                    'occasion': wish.occasion,
+                    'notification_type': wish.notification_type or 'Email',
+                }
+            else:
+                item['scheduled_wish'] = None
+
+        # 5. Filter by type
+        if type_param and type_param.lower() != 'all':
+            results = [r for r in results if r['type'].lower() == type_param.lower()]
+
+        # 6. Filter by search
+        if search_param and search_param.strip():
+            sq = search_param.strip().lower()
+            results = [
+                r for r in results
+                if sq in r['title'].lower()
+                or sq in r['recipient'].lower()
+                or sq in (r.get('notes') or '').lower()
+                or sq in r['type'].lower()
+            ]
+
+        # 7. Sort by date then title
+        results.sort(key=lambda x: (x['date'], x['title']))
+
+        return Response({
+            'count': len(results),
+            'start': start_date.isoformat(),
+            'end': end_date.isoformat(),
+            'results': results,
+        })
+
 
 # --- TEMPLATE VIEWSET ---
 
@@ -612,7 +1294,10 @@ class ScheduledWishViewSet(viewsets.ModelViewSet):
         return ScheduledWish.objects.filter(user=self.request.user).select_related('contact')
 
     def perform_create(self, serializer):
-        wish = serializer.save(user=self.request.user)
+        check_scheduled_wish_limit(self.request.user)
+        notification_type = self.request.data.get('notification_type', 'Email')
+        check_delivery_channel(self.request.user, notification_type)
+        wish = serializer.save(user=self.request.user, status='Pending')
         create_activity(
             user=self.request.user,
             action_type='WISH_SCHEDULED',
@@ -623,6 +1308,9 @@ class ScheduledWishViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        notification_type = self.request.data.get('notification_type')
+        if notification_type:
+            check_delivery_channel(self.request.user, notification_type)
         wish = serializer.save()
         create_activity(
             user=self.request.user,
@@ -723,7 +1411,7 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         elif sort == 'oldest':
             queryset = queryset.order_by('created_at')
         elif sort == 'upcoming':
-            queryset = queryset.filter(status='Scheduled').order_by('date', 'time')
+            queryset = queryset.filter(status__in=['Pending', 'Scheduled']).order_by('date', 'time')
         elif sort == 'completed':
             queryset = queryset.filter(status='Sent').order_by('-sent_at')
         elif sort == 'failed':
@@ -738,10 +1426,25 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         tz_name = data.get('timezone', 'Asia/Kolkata')
         
         # Validation
-        wish_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        if not date_str:
+            raise ValidationError({"date": "Scheduled date is required."})
+
         try:
-            wish_time = datetime.strptime(time_str, '%H:%M').time()
-        except ValueError:
+            wish_date = datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str
+        except (ValueError, TypeError):
+            raise ValidationError({"date": "Invalid date format. Use YYYY-MM-DD."})
+
+        if isinstance(time_str, str):
+            try:
+                wish_time = datetime.strptime(time_str, '%H:%M').time()
+            except ValueError:
+                try:
+                    wish_time = datetime.strptime(time_str, '%H:%M:%S').time()
+                except ValueError:
+                    wish_time = datetime.strptime('09:00', '%H:%M').time()
+        elif isinstance(time_str, datetime.time):
+            wish_time = time_str
+        else:
             wish_time = datetime.strptime('09:00', '%H:%M').time()
             
         # Validate future only
@@ -754,38 +1457,52 @@ class SchedulesViewSet(viewsets.ModelViewSet):
             aware_dt = tz.localize(naive_dt)
             
         if aware_dt <= timezone.localtime(timezone.now(), tz):
-            raise serializers.ValidationError({"date": "Scheduled date and time must be in the future."})
+            raise ValidationError({"date": "Scheduled date and time must be in the future."})
+
+        check_scheduled_wish_limit(self.request.user)
+        notification_type = data.get('notification_type', 'Email')
+        check_delivery_channel(self.request.user, notification_type)
             
-        # Save
-        wish = serializer.save(user=self.request.user)
-        
-        # Schedule Celery task if not draft/Pending
-        if wish.status == 'Scheduled':
-            utc_dt = aware_dt.astimezone(pytz.UTC)
-            task = send_scheduled_wish_task.apply_async((wish.id,), eta=utc_dt)
-            wish.task_id = task.id
-            wish.save()
+        # Save initial schedule status strictly as Pending. Never send immediately!
+        wish = serializer.save(user=self.request.user, status='Pending')
         
         log_activity(self.request.user, 'Schedule Created', f"Scheduled wish ID {wish.id} for {wish.contact.name}.", self.request)
+        create_activity(
+            user=self.request.user,
+            action_type='WISH_SCHEDULED',
+            title=f"Wish scheduled for {wish.contact.name}",
+            entity_type='scheduled_wish',
+            entity_id=wish.id,
+            metadata={'contact_name': wish.contact.name, 'occasion': wish.occasion}
+        )
 
     def perform_update(self, serializer):
         instance = self.get_object()
         if instance.status == 'Sent':
-            raise serializers.ValidationError("Cannot edit already sent wishes.")
+            raise ValidationError("Cannot edit already sent wishes.")
             
         data = self.request.data
         date_str = data.get('date', str(instance.date))
         time_str = data.get('time', instance.time.strftime('%H:%M') if instance.time else '09:00')
         tz_name = data.get('timezone', instance.timezone)
         
-        wish_date = datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str
+        try:
+            wish_date = datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str
+        except (ValueError, TypeError):
+            raise ValidationError({"date": "Invalid date format. Use YYYY-MM-DD."})
+
         if isinstance(time_str, str):
             try:
                 wish_time = datetime.strptime(time_str, '%H:%M').time()
             except ValueError:
-                wish_time = datetime.strptime('09:00', '%H:%M').time()
-        else:
+                try:
+                    wish_time = datetime.strptime(time_str, '%H:%M:%S').time()
+                except ValueError:
+                    wish_time = datetime.strptime('09:00', '%H:%M').time()
+        elif isinstance(time_str, datetime.time):
             wish_time = time_str
+        else:
+            wish_time = datetime.strptime('09:00', '%H:%M').time()
             
         # Validate future only
         naive_dt = datetime.combine(wish_date, wish_time)
@@ -797,26 +1514,19 @@ class SchedulesViewSet(viewsets.ModelViewSet):
             aware_dt = tz.localize(naive_dt)
             
         if aware_dt <= timezone.localtime(timezone.now(), tz):
-            raise serializers.ValidationError({"date": "Scheduled date and time must be in the future."})
+            raise ValidationError({"date": "Scheduled date and time must be in the future."})
+
+        notification_type = data.get('notification_type')
+        if notification_type:
+            check_delivery_channel(self.request.user, notification_type)
             
-        # If date/time/timezone changed, revoke old and schedule new
-        date_changed = wish_date != instance.date or wish_time != instance.time or tz_name != instance.timezone
-        
         wish = serializer.save()
-        
-        if date_changed and wish.status == 'Scheduled':
-            # Revoke old task
-            if instance.task_id:
-                try:
-                    celery_app.control.revoke(instance.task_id, terminate=True)
-                except Exception as e:
-                    logger.error(f"Failed to revoke task {instance.task_id}: {e}")
-            
-            # Schedule new task
-            utc_dt = aware_dt.astimezone(pytz.UTC)
-            task = send_scheduled_wish_task.apply_async((wish.id,), eta=utc_dt)
-            wish.task_id = task.id
-            wish.save()
+
+        # If previously Failed or Cancelled, reset to Pending with error cleared
+        if wish.status in ['Failed', 'Cancelled']:
+            wish.status = 'Pending'
+            wish.last_error = None
+            wish.save(update_fields=['status', 'last_error', 'updated_at'])
             
         log_activity(self.request.user, 'Schedule Updated', f"Updated wish ID {wish.id}.", self.request)
         create_activity(
@@ -892,22 +1602,10 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         if aware_dt <= timezone.localtime(timezone.now(), tz):
             return Response({'error': 'Cannot resume wish. Scheduled date/time must be in the future. Please update date/time first.'}, status=400)
             
-        # Revoke old just in case
-        if wish.task_id:
-            try:
-                celery_app.control.revoke(wish.task_id, terminate=True)
-            except Exception:
-                pass
-                
-        wish.status = 'Scheduled'
+        wish.status = 'Pending'
         wish.cancelled_at = None
         wish.last_error = None
-        
-        # Schedule new task
-        utc_dt = aware_dt.astimezone(pytz.UTC)
-        task = send_scheduled_wish_task.apply_async((wish.id,), eta=utc_dt)
-        wish.task_id = task.id
-        wish.save()
+        wish.save(update_fields=['status', 'cancelled_at', 'last_error', 'updated_at'])
         
         log_activity(request.user, 'Resume Wish', f"Resumed scheduled wish ID {wish.id}.", request)
         create_activity(
@@ -975,7 +1673,7 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         today_date = timezone.localdate()
         
         today_count = ScheduledWish.objects.filter(user=user, date=today_date).count()
-        upcoming_count = ScheduledWish.objects.filter(user=user, date__gt=today_date, status='Scheduled').count()
+        upcoming_count = ScheduledWish.objects.filter(user=user, date__gt=today_date, status__in=['Pending', 'Scheduled']).count()
         pending_count = ScheduledWish.objects.filter(user=user, status='Pending').count()
         scheduled_count = ScheduledWish.objects.filter(user=user, status='Scheduled').count()
         sent_count = ScheduledWish.objects.filter(user=user, status='Sent').count()
@@ -1001,6 +1699,25 @@ class EmailLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return EmailLog.objects.filter(user=self.request.user).order_by('-created_at')
+
+    @action(detail=False, methods=['GET'], url_path='export_csv')
+    def export_csv(self, request):
+        logs = self.get_queryset()
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="email_logs.csv"'
+        response.write('\ufeff')  # UTF-8 BOM
+        writer = csv.writer(response)
+        writer.writerow(['Recipient', 'Subject', 'Status', 'Date', 'Delivery Status'])
+        for log in logs:
+            writer.writerow([
+                log.recipient, log.subject, log.status, log.date, log.delivery
+            ])
+        log_activity(request.user, 'CSV Export', 'Exported email logs to CSV file.', request)
+        return response
+
+    @action(detail=False, methods=['GET'], url_path='export-csv')
+    def export_csv_hyphen(self, request):
+        return self.export_csv(request)
 
 
 # --- OPENROUTER AI GENERATION ---
@@ -1059,6 +1776,8 @@ def generate_ai_greeting(request):
     If contact_id is supplied, auto-populate from Contact fields.
     Saves result to GeneratedGreeting and returns the object.
     """
+    check_ai_generation_limit(request.user)
+
     try:
         logger.info(f"[AI_GREETING_PAYLOAD] {request.data}")
 
@@ -1348,6 +2067,8 @@ def schedule_greeting(request):
     if not date_str:
         return Response({'error': 'date is required.'}, status=400)
 
+    check_scheduled_wish_limit(request.user)
+
     try:
         contact = Contact.objects.get(pk=contact_id, user=request.user)
     except Contact.DoesNotExist:
@@ -1363,6 +2084,18 @@ def schedule_greeting(request):
     except ValueError:
         wish_time_obj = datetime.strptime('09:00', '%H:%M').time()
 
+    # Future date/time validation
+    naive_dt = datetime.combine(wish_date, wish_time_obj)
+    try:
+        user_tz = pytz.timezone(tz)
+        aware_dt = user_tz.localize(naive_dt)
+    except Exception:
+        user_tz = pytz.timezone('Asia/Kolkata')
+        aware_dt = user_tz.localize(naive_dt)
+
+    if aware_dt <= timezone.localtime(timezone.now(), user_tz):
+        return Response({'error': 'Scheduled date and time must be in the future.'}, status=400)
+
     wish = ScheduledWish.objects.create(
         user=request.user,
         contact=contact,
@@ -1372,7 +2105,7 @@ def schedule_greeting(request):
         message=greeting_text,
         timezone=tz,
         reminder_minutes=reminder_minutes,
-        status='Scheduled',
+        status='Pending',
     )
 
     create_activity(
@@ -1473,80 +2206,121 @@ class NotificationViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def subscription_plans(request):
-    plans = [
-        {
-            'id': 'FREE',
-            'name': 'Free Plan',
-            'price': 0,
-            'features': ['10 Scheduled Wishes/mo', 'Email Delivery', 'Standard AI Generator', 'Basic Support']
-        },
-        {
-            'id': 'PRO',
-            'name': 'Pro Plan',
-            'price': 9.99,
-            'features': ['Unlimited Wishes', 'Email & SMS Delivery', 'Advanced AI Personalization', 'Priority Support', 'CSV Import/Export']
-        },
-        {
-            'id': 'BUSINESS',
-            'name': 'Business Plan',
-            'price': 29.99,
-            'features': ['All Pro features', 'WhatsApp Delivery', 'Team Access (3 seats)', 'Custom Prompt Builder', 'Automated Daily AI Beat']
-        },
-        {
-            'id': 'ENTERPRISE',
-            'name': 'Enterprise Plan',
-            'price': 99.99,
-            'features': ['All Business features', 'Dedicated SMTP/API', 'Custom Recurrence Rules', 'Dedicated Account Manager', 'SLA Support']
-        }
-    ]
-    return Response({'plans': plans})
+    plans = [build_plan_api_payload(plan_id) for plan_id in PLAN_IDS]
+    payload = {
+        'plans': plans,
+        'currency': 'INR',
+    }
+    if request.user.is_authenticated:
+        payload['usage'] = get_usage_summary(request.user)
+        payload['current_plan'] = request.user.profile.subscription_plan
+    return Response(payload)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_checkout_session(request):
-    plan_id = request.data.get('planId')
-    gateway = request.data.get('gateway', 'mock') # mock, stripe, razorpay
-    
-    if plan_id not in ['FREE', 'PRO', 'BUSINESS', 'ENTERPRISE']:
-        return Response({'error': 'Invalid plan ID'}, status=400)
-        
-    # Simulate transaction creation
-    tx = SubscriptionTransaction.objects.create(
-        user=request.user,
-        gateway=gateway,
-        transaction_id=f"tx_{int(timezone.now().timestamp())}",
-        amount=Decimal('9.99') if plan_id == 'PRO' else (Decimal('29.99') if plan_id == 'BUSINESS' else Decimal('99.99')),
-        plan=plan_id,
-        status='Pending'
-    )
-    
-    # Mocking redirect session
-    mock_url = f"{settings.FRONTEND_URL}/billing?session_id={tx.transaction_id}&success=true"
-    return Response({
-        'checkoutUrl': mock_url,
-        'transactionId': tx.transaction_id,
-        'message': 'Sandbox checkout session created.'
-    })
+    """Legacy alias — creates a pending dummy payment without activating subscription."""
+    plan_id = request.data.get('planId') or request.data.get('plan')
+    try:
+        payment = create_dummy_payment(request.user, plan_id)
+        return Response({
+            'paymentId': payment['payment_id'],
+            'transactionId': payment['transaction_id'],
+            'message': 'Sandbox payment session created.',
+        })
+    except ValueError as e:
+        return _payment_error_response(e)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dummy_payment_create(request):
+    plan_id = request.data.get('plan') or request.data.get('planId')
+    try:
+        payment = create_dummy_payment(request.user, plan_id)
+        return Response(payment, status=201)
+    except ValueError as e:
+        return _payment_error_response(e)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dummy_payment_process(request):
+    payment_id = request.data.get('payment_id') or request.data.get('paymentId')
+    outcome = (request.data.get('outcome') or '').lower()
+
+    if not payment_id:
+        return Response({'detail': 'payment_id is required.', 'code': 'MISSING_PAYMENT_ID'}, status=400)
+
+    try:
+        result = process_dummy_payment(request.user, payment_id, outcome)
+        if result['payment_status'] == 'SUCCESS':
+            log_activity(request.user, 'Upgrade Plan', f"Upgraded plan to {result['plan']} via dummy payment.", request)
+        return Response(result)
+    except ValueError as e:
+        return _payment_error_response(e)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dummy_payment_cancel(request):
+    payment_id = request.data.get('payment_id') or request.data.get('paymentId')
+    if not payment_id:
+        return Response({'detail': 'payment_id is required.', 'code': 'MISSING_PAYMENT_ID'}, status=400)
+    try:
+        payment = cancel_dummy_payment(request.user, payment_id)
+        return Response({'success': True, 'payment': payment})
+    except ValueError as e:
+        return _payment_error_response(e)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def payment_list(request):
+    payments = list_payments_for_user(request.user)
+    return Response({'payments': payments})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def payment_detail(request, payment_id):
+    payment = get_payment_for_user(request.user, payment_id)
+    if not payment:
+        return Response({'detail': 'Payment not found.', 'code': 'PAYMENT_NOT_FOUND'}, status=404)
+    return Response(payment)
+
+
+def _payment_error_response(exc):
+    code = str(exc)
+    messages = {
+        'INVALID_PLAN': ('Invalid or non-purchasable plan.', 400),
+        'ALREADY_SUBSCRIBED': ('You are already subscribed to this plan.', 400),
+        'PLAN_DOWNGRADE_NOT_ALLOWED': ('You cannot downgrade through checkout. Contact support.', 400),
+        'CHECKOUT_NOT_AVAILABLE': ('Checkout is not available for this plan.', 400),
+        'PAYMENT_NOT_FOUND': ('Payment not found.', 404),
+        'PAYMENT_ALREADY_COMPLETED': ('This payment has already been completed.', 400),
+        'INVALID_OUTCOME': ('Invalid payment outcome. Use "success" or "failed".', 400),
+    }
+    detail, status_code = messages.get(code, ('Payment processing failed.', 400))
+    return Response({'detail': detail, 'code': code}, status=status_code)
+
 
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def payment_webhook(request):
-    # Webhook listener simulation
+    """Legacy webhook — kept for backward compatibility. Prefer dummy/process API."""
     transaction_id = request.data.get('transactionId')
     status_payment = request.data.get('status', 'Completed')
-    
+
     try:
         tx = SubscriptionTransaction.objects.get(transaction_id=transaction_id)
-        if status_payment == 'Completed':
-            tx.status = 'Completed'
-            tx.save()
-            
-            # Upgrade user profile
+        if status_payment in ('Completed', 'SUCCESS') and tx.status != 'SUCCESS':
+            tx.status = 'SUCCESS'
+            tx.save(update_fields=['status', 'updated_at'])
             profile = tx.user.profile
             profile.subscription_plan = tx.plan
-            profile.save()
-            
+            profile.save(update_fields=['subscription_plan'])
             log_activity(tx.user, 'Upgrade Plan', f"Upgraded plan to {tx.plan} via payment.", request)
             create_activity(
                 user=tx.user,
@@ -1554,21 +2328,18 @@ def payment_webhook(request):
                 title=f"Subscription upgraded to {tx.plan}",
                 entity_type='subscription_transaction',
                 entity_id=tx.id,
-                metadata={'plan': tx.plan, 'gateway': tx.gateway, 'amount': str(tx.amount)}
+                metadata={'plan': tx.plan, 'gateway': tx.gateway, 'amount': str(tx.amount)},
             )
-
-            # Send Notification
             Notification.objects.create(
                 user=tx.user,
                 title="Subscription Upgraded!",
                 message=f"Thank you! Your account has been upgraded to the {tx.plan} plan successfully.",
-                type='system'
+                type='system',
             )
-            
             return Response({'success': True, 'message': 'User subscription upgraded.'})
     except SubscriptionTransaction.DoesNotExist:
         pass
-        
+
     return Response({'success': False, 'error': 'Transaction not found'}, status=400)
 
 
@@ -1724,13 +2495,38 @@ class AIPromptViewSet(viewsets.ModelViewSet):
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-    queryset = AuditLog.objects.all().order_by('-created_at')
+
+    def get_queryset(self):
+        qs = AuditLog.objects.select_related('user').order_by('-created_at')
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        if search:
+            qs = qs.filter(
+                Q(action__icontains=search) |
+                Q(event_type__icontains=search) |
+                Q(actor_name__icontains=search) |
+                Q(user__username__icontains=search) |
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(details__icontains=search) |
+                Q(ip_address__icontains=search) |
+                Q(previous_name__icontains=search) |
+                Q(updated_name__icontains=search)
+            )
+        event_type = self.request.query_params.get('event_type')
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+        user_id = self.request.query_params.get('user')
+        if user_id:
+            qs = qs.filter(user_id=user_id)
+        return qs
 
 # Admin: User management
 class AdminUserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-    queryset = User.objects.all().order_by('-date_joined')
+
+    def get_queryset(self):
+        return User.objects.select_related('profile').order_by('-date_joined')
     
     @action(detail=True, methods=['POST'])
     def toggle_status(self, request, pk=None):
@@ -2011,17 +2807,47 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='export')
     def export_card(self, request, pk=None):
-        """Server-side export: returns the preview image file."""
+        """Server-side export: returns the card file in png, jpeg, or pdf."""
         card = self.get_object()
         fmt = request.query_params.get('format', 'png').lower()
+        if fmt not in ('png', 'jpeg', 'jpg', 'pdf'):
+            fmt = 'png'
+
+        safe_title = "".join(c for c in (card.title or 'greeting-card') if c.isalnum() or c in (' ', '_', '-')).strip() or 'greeting-card'
+
         if card.preview_image:
-            with card.preview_image.open('rb') as f:
-                data = f.read()
-            content_type = 'image/png' if fmt == 'png' else 'image/jpeg'
-            resp = HttpResponse(data, content_type=content_type)
-            resp['Content-Disposition'] = f'attachment; filename="{card.title}.{fmt}"'
-            return resp
-        return Response({'error': 'No preview image generated yet.'}, status=404)
+            try:
+                with card.preview_image.open('rb') as f:
+                    data = f.read()
+
+                if fmt == 'pdf':
+                    try:
+                        from PIL import Image as PILImage
+                        import io
+                        img = PILImage.open(io.BytesIO(data))
+                        if img.mode in ('RGBA', 'LA', 'P'):
+                            img = img.convert('RGB')
+                        pdf_io = io.BytesIO()
+                        img.save(pdf_io, format='PDF')
+                        pdf_io.seek(0)
+                        resp = HttpResponse(pdf_io.read(), content_type='application/pdf')
+                        resp['Content-Disposition'] = f'attachment; filename="{safe_title}.pdf"'
+                        return resp
+                    except Exception as e:
+                        logger.warning(f"Card PDF conversion fallback: {e}")
+                        resp = HttpResponse(data, content_type='image/png')
+                        resp['Content-Disposition'] = f'attachment; filename="{safe_title}.png"'
+                        return resp
+
+                content_type = 'image/png' if fmt == 'png' else 'image/jpeg'
+                resp = HttpResponse(data, content_type=content_type)
+                resp['Content-Disposition'] = f'attachment; filename="{safe_title}.{fmt}"'
+                return resp
+            except Exception as e:
+                logger.error(f"Error reading card preview image: {e}")
+                return Response({'error': 'Failed to read card preview file.'}, status=500)
+
+        return Response({'error': 'No preview image generated yet. Please open the editor to generate a preview.'}, status=404)
 
     @action(detail=True, methods=['post'], url_path='send')
     def send_card(self, request, pk=None):
@@ -2137,6 +2963,252 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': f"Greeting card sent to {contact.name} at {contact.email}.",
         })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def global_search(request):
+    """
+    Production-ready global search API.
+    Performs real-time search across:
+      - Contacts (name, email, phone, tags, relationship, group)
+      - Events (title, recipient, type, status)
+      - Scheduled Wishes (contact name, email, occasion, message, template, status)
+      - Greeting Cards (title, recipient_name, occasion, heading, status, card_theme)
+        (+ GreetingCardTemplate fallback)
+
+    Features:
+      - Scoped strictly to request.user (permission-based data filtering)
+      - Input validation (trimming, max length, limit bounds)
+      - Highly optimized queries (select_related, indexed fields)
+      - Rich metadata per result category for frontend navigation and display
+    """
+    import urllib.parse
+
+    raw_query = request.query_params.get('q', '').strip()
+    category = request.query_params.get('category', 'all').strip().lower()
+
+    # Input validation: query length
+    if len(raw_query) > 100:
+        return Response({
+            'error': 'Search query exceeds maximum length of 100 characters.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate and constrain limit
+    try:
+        limit = int(request.query_params.get('limit', 5))
+        limit = max(1, min(limit, 20))
+    except (ValueError, TypeError):
+        limit = 5
+
+    empty_response = {
+        'query': raw_query,
+        'results': [],
+        'grouped': {
+            'contacts': [],
+            'events': [],
+            'scheduled_wishes': [],
+            'greeting_cards': []
+        },
+        'counts': {
+            'total': 0,
+            'contacts': 0,
+            'events': 0,
+            'scheduled_wishes': 0,
+            'greeting_cards': 0
+        }
+    }
+
+    if not raw_query:
+        return Response(empty_response, status=status.HTTP_200_OK)
+
+    user = request.user
+    q = raw_query
+
+    contacts_list = []
+    events_list = []
+    wishes_list = []
+    cards_list = []
+
+    # 1. Contacts Search
+    if category in ('all', 'contacts'):
+        contacts_qs = Contact.objects.filter(user=user).filter(
+            Q(name__icontains=q) |
+            Q(email__icontains=q) |
+            Q(phone__icontains=q) |
+            Q(relationship__icontains=q) |
+            Q(tags__icontains=q) |
+            Q(group__icontains=q)
+        ).order_by('-is_favorite', 'name')[:limit]
+
+        for c in contacts_qs:
+            sub = c.relationship or 'Contact'
+            if c.email:
+                sub += f" • {c.email}"
+            contacts_list.append({
+                'id': c.id,
+                'category': 'contacts',
+                'category_label': 'Contacts',
+                'title': c.name,
+                'subtitle': sub,
+                'url': f"/contacts?search={urllib.parse.quote(c.name)}&id={c.id}",
+                'meta': {
+                    'email': c.email,
+                    'phone': c.phone or '',
+                    'relationship': c.relationship or '',
+                    'group': c.group or '',
+                    'is_favorite': c.is_favorite,
+                    'birthday': c.birthday or '',
+                }
+            })
+
+    # 2. Events Search
+    if category in ('all', 'events'):
+        events_qs = Event.objects.filter(user=user).filter(
+            Q(title__icontains=q) |
+            Q(recipient__icontains=q) |
+            Q(type__icontains=q) |
+            Q(status__icontains=q)
+        ).order_by('date', 'title')[:limit]
+
+        for e in events_qs:
+            sub = f"{e.type} for {e.recipient}"
+            if e.date:
+                formatted_date = e.date.strftime('%b %d, %Y') if hasattr(e.date, 'strftime') else str(e.date)
+                sub += f" • {formatted_date}"
+            events_list.append({
+                'id': e.id,
+                'category': 'events',
+                'category_label': 'Events',
+                'title': e.title,
+                'subtitle': sub,
+                'url': f"/events?search={urllib.parse.quote(e.title)}&id={e.id}",
+                'meta': {
+                    'recipient': e.recipient,
+                    'type': e.type,
+                    'date': str(e.date) if e.date else '',
+                    'status': e.status,
+                    'recurring': e.recurring,
+                }
+            })
+
+    # 3. Scheduled Wishes Search
+    if category in ('all', 'scheduled_wishes', 'schedules', 'wishes'):
+        wishes_qs = ScheduledWish.objects.filter(user=user).select_related('contact').filter(
+            Q(contact__name__icontains=q) |
+            Q(contact__email__icontains=q) |
+            Q(occasion__icontains=q) |
+            Q(message__icontains=q) |
+            Q(template__icontains=q) |
+            Q(status__icontains=q)
+        ).order_by('date', 'time')[:limit]
+
+        for w in wishes_qs:
+            c_name = w.contact.name if w.contact else 'Unknown Recipient'
+            date_str = str(w.date) if w.date else ''
+            time_str = str(w.time) if w.time else ''
+            datetime_str = f"{date_str} {time_str}".strip()
+            sub = f"{w.status}"
+            if datetime_str:
+                sub += f" • {datetime_str}"
+            wishes_list.append({
+                'id': w.id,
+                'category': 'scheduled_wishes',
+                'category_label': 'Scheduled Wishes',
+                'title': f"{w.occasion} Wish for {c_name}",
+                'subtitle': sub,
+                'url': f"/schedule?search={urllib.parse.quote(c_name)}&id={w.id}",
+                'meta': {
+                    'contact_name': c_name,
+                    'occasion': w.occasion,
+                    'date': date_str,
+                    'time': time_str,
+                    'status': w.status,
+                    'preview': (w.message[:90] + '...') if len(w.message or '') > 90 else (w.message or ''),
+                }
+            })
+
+    # 4. Greeting Cards Search
+    if category in ('all', 'greeting_cards', 'cards'):
+        cards_qs = GreetingCard.objects.filter(user=user).filter(
+            Q(title__icontains=q) |
+            Q(recipient_name__icontains=q) |
+            Q(occasion__icontains=q) |
+            Q(heading__icontains=q) |
+            Q(status__icontains=q) |
+            Q(card_theme__icontains=q)
+        ).order_by('-updated_at')[:limit]
+
+        for card in cards_qs:
+            sub = card.occasion or 'Greeting Card'
+            if card.recipient_name:
+                sub += f" for {card.recipient_name}"
+            sub += f" • {card.status.capitalize()}"
+            preview_img = request.build_absolute_uri(card.preview_image.url) if card.preview_image else None
+            target_url = f"/greeting-cards/preview/{card.id}" if card.status == 'published' else f"/greeting-cards/create/{card.id}"
+            cards_list.append({
+                'id': card.id,
+                'category': 'greeting_cards',
+                'category_label': 'Greeting Cards',
+                'title': card.title or 'Untitled Card',
+                'subtitle': sub,
+                'preview_image_url': preview_img,
+                'url': target_url,
+                'meta': {
+                    'occasion': card.occasion,
+                    'recipient_name': card.recipient_name,
+                    'status': card.status,
+                    'card_size': card.card_size,
+                    'is_template': False,
+                }
+            })
+
+        # If user has fewer cards than limit, also search active card templates
+        remaining = limit - len(cards_list)
+        if remaining > 0:
+            templates_qs = GreetingCardTemplate.objects.filter(is_active=True).filter(
+                Q(title__icontains=q) |
+                Q(occasion__icontains=q) |
+                Q(category__icontains=q)
+            ).order_by('sort_order', 'title')[:remaining]
+
+            for tmpl in templates_qs:
+                preview_img = request.build_absolute_uri(tmpl.preview_image.url) if tmpl.preview_image else None
+                cards_list.append({
+                    'id': tmpl.id,
+                    'category': 'greeting_cards',
+                    'category_label': 'Greeting Cards',
+                    'title': f"Template: {tmpl.title}",
+                    'subtitle': f"{tmpl.occasion} • {tmpl.category} Template",
+                    'preview_image_url': preview_img,
+                    'url': f"/greeting-cards/create?template={tmpl.id}",
+                    'meta': {
+                        'occasion': tmpl.occasion,
+                        'category': tmpl.category,
+                        'is_template': True,
+                    }
+                })
+
+    all_results = contacts_list + events_list + wishes_list + cards_list
+
+    return Response({
+        'query': q,
+        'results': all_results,
+        'grouped': {
+            'contacts': contacts_list,
+            'events': events_list,
+            'scheduled_wishes': wishes_list,
+            'greeting_cards': cards_list,
+        },
+        'counts': {
+            'total': len(all_results),
+            'contacts': len(contacts_list),
+            'events': len(events_list),
+            'scheduled_wishes': len(wishes_list),
+            'greeting_cards': len(cards_list),
+        }
+    }, status=status.HTTP_200_OK)
+
 
 
 

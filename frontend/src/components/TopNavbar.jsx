@@ -1,17 +1,18 @@
 import React from 'react';
-import { Bell, Search } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
 import Avatar from './common/Avatar';
+import ThemeToggle from './ui/ThemeToggle';
+import NotificationPanel from './NotificationPanel';
+import GlobalSearchBar from './GlobalSearchBar';
 
-const TopNavbar = ({ onMenuClick }) => {
+const TopNavbar = ({ onMenuClick, menuOpen = false, menuButtonRef }) => {
   const { user } = useAuth();
-  const { unreadNotificationCount } = useData();
 
-  const displayName = user?.first_name
-    ? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`
-    : user?.username || user?.email?.split('@')[0] || 'User';
+  const displayName = user?.display_name || user?.full_name || (user?.first_name
+    ? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`.trim()
+    : user?.username || user?.email?.split('@')[0] || 'User');
 
   const avatarSrc = user?.profile?.avatar
     ? user.profile.avatar.startsWith('http')
@@ -22,53 +23,47 @@ const TopNavbar = ({ onMenuClick }) => {
   const planBadge = user?.profile?.subscription_plan;
 
   return (
-    <div className="top-nav h-16 px-6 flex items-center justify-between sticky top-0 z-40">
-      <div className="flex items-center gap-4">
+    <header className="top-nav h-16 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-40">
+      <div className="flex items-center gap-3 min-w-0">
         <button
+          ref={menuButtonRef}
+          type="button"
           onClick={onMenuClick}
-          className="lg:hidden p-2 -ml-2 text-[#94A3B8]"
-          aria-label="Toggle menu"
+          className="lg:hidden w-10 h-10 -ml-1 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-fg hover:bg-raised/70 transition-colors"
+          aria-label="Toggle navigation menu"
+          aria-expanded={menuOpen}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          <Menu size={20} aria-hidden="true" />
         </button>
 
-        <div className="relative w-80 hidden md:block">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B] pointer-events-none" size={16} />
-          <input
-            type="text"
-            placeholder="Search contacts, events..."
-            className="input pl-10 pr-4 py-2 text-sm w-full bg-[#1E293B] border border-[#334155] focus:border-indigo-500 outline-none rounded-xl"
-          />
-        </div>
+        <GlobalSearchBar />
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Status indicator */}
-        <div className="hidden sm:flex items-center gap-2 bg-[#1E293B] px-3 py-1 rounded-full border border-[#334155]">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs text-[#94A3B8]">All systems operational</span>
+        <div className="hidden xl:flex items-center gap-2 bg-raised/50 px-3 py-1.5 rounded-full border border-line-soft mr-2" role="status">
+          <span className="relative flex w-2 h-2" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
+            <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-xs text-slate-400 font-medium">All systems operational</span>
         </div>
 
-        {/* Notifications bell */}
-        <Link to="/notifications" className="p-2.5 hover:bg-[#334155] rounded-full relative text-[#94A3B8] transition-colors">
-          <Bell size={19} />
-          {unreadNotificationCount > 0 && (
-            <span className="absolute top-1 right-1.5 bg-red-500 min-w-[16px] h-4 px-0.5 rounded-full text-[9px] flex items-center justify-center text-white font-bold">
-              {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
-            </span>
-          )}
-        </Link>
+        <ThemeToggle />
+        <NotificationPanel />
 
-        {/* User avatar + name */}
-        <div className="flex items-center gap-2.5 pl-2 border-l border-[#334155]">
+        {/* User profile */}
+        <Link
+          to="/settings"
+          aria-label={`Account settings for ${displayName}`}
+          className="flex items-center gap-2.5 ml-1 pl-3 border-l border-line-soft rounded-xl py-1 pr-2 hover:bg-raised/60 transition-colors"
+        >
           <Avatar src={avatarSrc} name={displayName} size="sm" />
-          <div className="hidden md:block">
-            <div className="text-sm font-medium leading-none text-slate-100">{displayName}</div>
+          <div className="hidden md:block text-left">
+            <div className="text-sm font-semibold leading-none text-fg">{displayName}</div>
             {planBadge && (
-              <div className={`text-[9px] mt-1 font-semibold uppercase tracking-wider ${
-                planBadge === 'FREE' ? 'text-[#64748B]' :
+              <div className={`text-[9px] mt-1 font-bold uppercase tracking-wider ${
+                planBadge === 'FREE' ? 'text-slate-500' :
                 planBadge === 'PRO' ? 'text-blue-400' :
                 planBadge === 'BUSINESS' ? 'text-purple-400' :
                 'text-amber-400'
@@ -77,9 +72,9 @@ const TopNavbar = ({ onMenuClick }) => {
               </div>
             )}
           </div>
-        </div>
+        </Link>
       </div>
-    </div>
+    </header>
   );
 };
 

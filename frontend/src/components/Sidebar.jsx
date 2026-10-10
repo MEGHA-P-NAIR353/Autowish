@@ -1,18 +1,87 @@
-import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   LayoutDashboard, Users, Calendar, Sparkles, Clock,
   Mail, Settings, BarChart3, LogOut, FileText, Bell, CreditCard,
   HelpCircle, Shield, UserCheck, Terminal, Heart,
-  CreditCard as CardIcon, PlusSquare, BookTemplate, Archive, ChevronDown, ChevronRight
+  CreditCard as CardIcon, PlusSquare, BookTemplate, Archive, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Avatar from './common/Avatar';
 
-const Sidebar = () => {
+const SCROLL_KEY = 'autowish-sidebar-scroll';
+
+const NavItem = ({ item, size = 15, tone = 'primary', end, onNavigate, pillId }) => (
+  <NavLink
+    to={item.to}
+    end={end}
+    onClick={onNavigate}
+    className={({ isActive }) =>
+      `group relative flex items-center gap-3 px-3.5 py-2 mb-0.5 rounded-xl text-[13px] font-medium transition-colors duration-200 ${
+        isActive ? 'text-fg' : 'text-slate-400 hover:text-fg hover:bg-fg/[0.045]'
+      }`
+    }
+  >
+    {({ isActive }) => (
+      <>
+        {isActive && (
+          <motion.span
+            layoutId={pillId}
+            aria-hidden="true"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            className={`absolute inset-0 rounded-xl border ${
+              tone === 'danger'
+                ? 'bg-gradient-to-r from-rose-500/15 via-rose-500/[0.06] to-transparent border-rose-500/25'
+                : 'bg-gradient-to-r from-indigo-500/[0.17] via-violet-500/[0.07] to-transparent border-indigo-500/25'
+            }`}
+          />
+        )}
+        {isActive && (
+          <span
+            aria-hidden="true"
+            className={`absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r-full ${tone === 'danger' ? 'bg-rose-400' : 'bg-gradient-to-b from-blue-400 to-violet-500'}`}
+          />
+        )}
+        <item.icon
+          size={size}
+          aria-hidden="true"
+          className={`relative shrink-0 transition-colors ${isActive ? (tone === 'danger' ? 'text-rose-400' : 'text-indigo-400') : 'text-slate-500 group-hover:text-slate-300'}`}
+        />
+        <span className="relative truncate">{item.label}</span>
+      </>
+    )}
+  </NavLink>
+);
+
+const SectionLabel = ({ children, danger }) => (
+  <div className={`text-[10px] font-bold px-3.5 mb-2 tracking-[0.14em] uppercase ${danger ? 'text-rose-400/90' : 'text-slate-500'}`}>
+    {children}
+  </div>
+);
+
+const Sidebar = ({ mobile = false, onNavigate }) => {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const isAdmin = user?.profile?.role === 'admin' || user?.profile?.role === 'super_admin' || user?.is_staff || user?.is_superuser;
-  const [cardsOpen, setCardsOpen] = useState(false);
+  const inCards = location.pathname.startsWith('/greeting-cards');
+  const [cardsOpen, setCardsOpen] = useState(inCards);
+  const scrollRef = useRef(null);
+
+  // Keep the Greeting Cards group open while browsing inside it
+  useEffect(() => { if (inCards) setCardsOpen(true); }, [inCards]);
+
+  // Persist sidebar scroll position across route changes (layout remounts per route)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    try { el.scrollTop = Number(sessionStorage.getItem(SCROLL_KEY)) || 0; } catch { /* ignore */ }
+    const onScroll = () => { try { sessionStorage.setItem(SCROLL_KEY, String(el.scrollTop)); } catch { /* ignore */ } };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   const menuItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -49,126 +118,106 @@ const Sidebar = () => {
     { to: '/admin/logs', icon: Terminal, label: 'Audit Logs' },
   ];
 
-  const navLinkClass = ({ isActive }) =>
-    `flex items-center gap-3 px-4 py-2 mb-1 rounded-xl text-xs font-semibold transition-all ${
-      isActive
-        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10 border border-blue-500/20'
-        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-    }`;
+  const pill = mobile ? 'nav-pill-mobile' : 'nav-pill';
+  const displayName = user?.display_name || user?.full_name || (user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.username || 'User');
 
   return (
-    <div className="w-64 bg-[#0F172A] border-r border-slate-800 h-screen flex flex-col fixed lg:static z-50 overflow-y-auto shrink-0 select-none">
+    <aside className="glass-sidebar w-64 h-screen flex flex-col shrink-0 select-none">
       {/* Logo */}
-      <div className="p-6 border-b border-slate-800">
+      <div className="px-5 py-5 border-b border-line-soft">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="text-white font-bold text-xl">A</span>
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/20 on-accent">
+            <Sparkles size={19} aria-hidden="true" />
           </div>
           <div>
-            <div className="font-bold text-base tracking-tight text-white">AutoWish</div>
-            <div className="text-[10px] text-blue-400 font-bold -mt-1 tracking-widest uppercase">SaaS Enterprise</div>
+            <div className="font-bold text-[17px] tracking-tight text-fg leading-tight">AutoWish</div>
+            <div className="text-[10px] text-indigo-400 font-bold tracking-[0.16em] uppercase">SaaS Enterprise</div>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 py-4 px-3 space-y-6">
-        {/* Application Items */}
+      <nav aria-label="Main navigation" ref={scrollRef} className="flex-1 py-4 px-3 space-y-6 overflow-y-auto">
         <div>
-          <div className="text-[10px] font-extrabold text-slate-500 px-4 mb-2 tracking-widest uppercase">Application</div>
+          <SectionLabel>Application</SectionLabel>
           {menuItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>
-              <item.icon size={15} />
-              <span>{item.label}</span>
-            </NavLink>
+            <NavItem key={item.to} item={item} onNavigate={onNavigate} pillId={pill} />
           ))}
         </div>
 
         {/* Greeting Cards Section */}
         <div>
-          <div className="text-[10px] font-extrabold text-slate-500 px-4 mb-2 tracking-widest uppercase">Greeting Cards</div>
-
-          {/* Collapsible trigger */}
+          <SectionLabel>Greeting Cards</SectionLabel>
           <button
+            type="button"
             onClick={() => setCardsOpen((o) => !o)}
-            className="flex items-center justify-between w-full px-4 py-2 mb-1 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 transition-all"
+            aria-expanded={cardsOpen}
+            aria-controls="sidebar-greeting-cards"
+            className="flex items-center justify-between w-full px-3.5 py-2 mb-0.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-fg hover:bg-fg/[0.045] transition-colors"
           >
-            <div className="flex items-center gap-3">
-              <CardIcon size={15} className="text-violet-400" />
+            <span className="flex items-center gap-3">
+              <CardIcon size={15} aria-hidden="true" className="text-violet-400" />
               <span>Greeting Cards</span>
-            </div>
-            {cardsOpen
-              ? <ChevronDown size={13} className="text-slate-500" />
-              : <ChevronRight size={13} className="text-slate-500" />}
+            </span>
+            <ChevronDown size={14} aria-hidden="true" className={`text-slate-500 transition-transform duration-200 ${cardsOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          {cardsOpen && (
-            <div className="pl-3 border-l border-slate-700/50 ml-4 space-y-0.5">
-              {cardSubItems.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === '/greeting-cards'} className={navLinkClass}>
-                  <item.icon size={13} />
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {cardsOpen && (
+              <motion.div
+                id="sidebar-greeting-cards"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="pl-3 border-l border-line ml-5 mt-1 space-y-0.5">
+                  {cardSubItems.map((item) => (
+                    <NavItem key={item.to} item={item} size={13} end={item.to === '/greeting-cards'} onNavigate={onNavigate} pillId={pill} />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Account Items */}
         <div>
-          <div className="text-[10px] font-extrabold text-slate-500 px-4 mb-2 tracking-widest uppercase">Billing & Help</div>
+          <SectionLabel>Billing &amp; Help</SectionLabel>
           {accountItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>
-              <item.icon size={15} />
-              <span>{item.label}</span>
-            </NavLink>
+            <NavItem key={item.to} item={item} onNavigate={onNavigate} pillId={pill} />
           ))}
         </div>
 
-        {/* Admin Items */}
         {isAdmin && (
           <div>
-            <div className="text-[10px] font-extrabold text-rose-500/80 px-4 mb-2 tracking-widest uppercase">Admin Panel</div>
+            <SectionLabel danger>Admin Panel</SectionLabel>
             {adminItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-2 mb-1 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-rose-600 text-white shadow-md border border-rose-500/20'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                  }`
-                }
-              >
-                <item.icon size={15} />
-                <span>{item.label}</span>
-              </NavLink>
+              <NavItem key={item.to} item={item} tone="danger" onNavigate={onNavigate} pillId={`${pill}-admin`} />
             ))}
           </div>
         )}
-      </div>
+      </nav>
 
       {/* User Footer */}
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 mb-4 px-1">
-          <Avatar src={user?.avatar || user?.profile?.avatar} name={user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || user?.email || 'User'} size="sm" />
+      <div className="p-4 border-t border-line-soft">
+        <div className="flex items-center gap-3 mb-3 px-1">
+          <Avatar src={user?.avatar || user?.profile?.avatar} name={displayName} size="sm" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold text-slate-200 truncate">
-              {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || 'User'}
-            </div>
+            <div className="text-xs font-semibold text-fg truncate">{displayName}</div>
             <div className="text-[10px] text-slate-500 truncate">{user?.email || ''}</div>
           </div>
         </div>
 
         <button
+          type="button"
           onClick={logout}
-          className="flex w-full items-center gap-2 px-4 py-2 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl transition-all border border-transparent hover:border-slate-800"
+          className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/20"
         >
-          <LogOut size={14} /> Logout
+          <LogOut size={14} aria-hidden="true" /> Logout
         </button>
       </div>
-    </div>
+    </aside>
   );
 };
 

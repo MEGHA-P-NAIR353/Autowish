@@ -73,7 +73,7 @@ const ImageUploader = ({ label = 'Upload Image', onCropped, compact = false }: I
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={compressing}
-        className={`w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#334155] text-[#94A3B8] hover:border-indigo-500/50 hover:text-[#F8FAFC] transition-all bg-[#0F1422] ${
+        className={`w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-line text-slate-400 hover:border-indigo-500/50 hover:text-fg transition-all bg-inset ${
           compact ? 'py-2 text-[11px]' : 'py-3 text-xs'
         }`}
       >

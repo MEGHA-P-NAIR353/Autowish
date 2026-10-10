@@ -105,7 +105,7 @@ export default function BackgroundPicker({
   return (
     <div className="space-y-4">
       {/* Tabs */}
-      <div className="flex bg-[#0F172A] p-1 rounded-xl border border-[#334155]">
+      <div className="flex bg-inset p-1 rounded-xl border border-line">
         {tabs.map((tab) => (
           <button
             key={tab}
@@ -114,7 +114,7 @@ export default function BackgroundPicker({
             className={`flex-1 py-1.5 text-center text-[10px] font-bold rounded-lg transition-all duration-200 ${
               activeTab === tab
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                : 'text-[#94A3B8] hover:text-[#F8FAFC]'
+                : 'text-black dark:text-slate-300 hover:text-indigo-600'
             }`}
           >
             {tab}
@@ -138,7 +138,7 @@ export default function BackgroundPicker({
                     background_image: '',
                   })
                 }
-                className="w-9 h-9 rounded-lg border border-[#334155] cursor-pointer bg-[#111827] p-0.5"
+                className="w-9 h-9 rounded-lg border border-line cursor-pointer bg-inset p-0.5"
                 aria-label="Custom background color"
               />
             </div>
@@ -200,10 +200,10 @@ export default function BackgroundPicker({
               className={`h-14 rounded-xl border-2 relative overflow-hidden transition-all duration-200 hover:scale-[1.02] ${
                 backgroundPattern === pattern.value
                   ? 'border-indigo-400 ring-2 ring-indigo-500/30'
-                  : 'border-[#334155]'
+                  : 'border-line'
               }`}
             >
-              <div className="absolute inset-0 bg-[#1e293b]" />
+              <div className="absolute inset-0 bg-surface" />
               <div
                 className="absolute inset-0"
                 style={{
@@ -211,7 +211,7 @@ export default function BackgroundPicker({
                   backgroundSize: '14px 14px',
                 }}
               />
-              <span className="absolute bottom-1.5 left-2 text-[9px] text-slate-300 font-semibold bg-black/50 px-1.5 py-0.5 rounded">
+              <span className="absolute bottom-1.5 left-2 text-[9px] text-white font-semibold bg-black/50 px-1.5 py-0.5 rounded">
                 {pattern.label}
               </span>
             </button>
@@ -225,7 +225,7 @@ export default function BackgroundPicker({
           {displayBg ? (
             <div className="space-y-2">
               {/* Preview thumbnail */}
-              <div className="relative aspect-video rounded-xl overflow-hidden border border-[#334155] bg-[#111827]">
+              <div className="relative aspect-video rounded-xl overflow-hidden border border-line bg-inset">
                 <img
                   src={displayBg}
                   alt="Background preview"
@@ -235,7 +235,7 @@ export default function BackgroundPicker({
                   }}
                 />
                 {uploading && (
-                  <div className="absolute inset-0 bg-[#0F172A]/70 backdrop-blur-sm flex items-center justify-center gap-2">
+                  <div className="absolute inset-0 bg-inset/70 backdrop-blur-sm flex items-center justify-center gap-2">
                     <Loader2 size={18} className="animate-spin text-indigo-400" />
                     <span className="text-[10px] text-slate-300">Uploading...</span>
                   </div>
@@ -254,7 +254,7 @@ export default function BackgroundPicker({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-1.5 text-[10px] font-semibold text-[#94A3B8] hover:text-[#F8FAFC] bg-[#111827] hover:bg-[#1E293B] border border-[#334155] rounded-xl transition-all"
+                className="w-full py-1.5 text-[10px] font-semibold text-black dark:text-slate-300 hover:text-indigo-600 bg-inset hover:bg-surface border border-line rounded-xl transition-all"
               >
                 Replace Background
               </button>
@@ -262,18 +262,18 @@ export default function BackgroundPicker({
           ) : (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer flex flex-col items-center justify-center text-center border-2 border-dashed border-[#334155] rounded-xl py-8 hover:border-indigo-500/60 hover:bg-[#111827]/60 transition-all duration-200"
+              className="cursor-pointer flex flex-col items-center justify-center text-center border-2 border-dashed border-line rounded-xl py-8 hover:border-indigo-500/60 hover:bg-inset/60 transition-all duration-200"
             >
               {uploading ? (
                 <>
                   <Loader2 size={22} className="text-indigo-400 animate-spin mb-2" />
-                  <span className="text-xs text-[#94A3B8]">Uploading...</span>
+                  <span className="text-xs text-slate-400">Uploading...</span>
                 </>
               ) : (
                 <>
-                  <Upload size={22} className="text-[#94A3B8] mb-2" />
-                  <span className="text-xs font-semibold text-[#F8FAFC]">Upload Background Image</span>
-                  <span className="text-[10px] text-[#94A3B8] mt-1">PNG, JPG, WEBP · Max 8 MB</span>
+                  <Upload size={22} className="text-slate-400 mb-2" />
+                  <span className="text-xs font-semibold text-fg">Upload Background Image</span>
+                  <span className="text-[10px] text-black dark:text-slate-400 mt-1 font-medium">PNG, JPG, WEBP · Max 8 MB</span>
                 </>
               )}
             </div>

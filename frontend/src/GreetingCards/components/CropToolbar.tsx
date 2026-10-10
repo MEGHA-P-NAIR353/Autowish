@@ -11,7 +11,7 @@ interface CropToolbarProps {
 }
 
 const CropToolbar = ({ shape, onShapeChange, onReCrop, onRotate, onReset }: CropToolbarProps) => {
-  const btn = 'p-2 rounded-lg bg-[#1E293B] hover:bg-[#334155] text-slate-300 transition-all';
+  const btn = 'p-2 rounded-lg bg-surface hover:bg-raised-hover text-slate-300 transition-all';
   return (
     <div className='flex items-center gap-1.5 flex-wrap'>
       <button type='button' onClick={onReCrop} className={`${btn} hover:text-indigo-400`} aria-label='Recrop' title='Recrop'>
@@ -23,7 +23,7 @@ const CropToolbar = ({ shape, onShapeChange, onReCrop, onRotate, onReset }: Crop
       <button type='button' onClick={onReset} className={`${btn} hover:text-indigo-400`} aria-label='Reset' title='Reset'>
         <RefreshCw size={14} />
       </button>
-      <div className='w-px h-5 bg-[#334155] mx-0.5' />
+      <div className='w-px h-5 bg-raised-hover mx-0.5' />
       <button
         type='button'
         onClick={() => onShapeChange('round')}

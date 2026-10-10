@@ -1,12 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Mail, Phone, MapPin, Send, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 const Contact = () => {
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const subject = searchParams.get('subject');
+    if (subject === 'enterprise') {
+      setMsg(
+        'Hi, I am interested in the Auto-Wish AI Enterprise plan with custom limits and dedicated support. Please share pricing and onboarding details.'
+      );
+    }
+    if (user?.email) {
+      setEmail(user.email);
+    }
+    if (user?.first_name || user?.last_name) {
+      setName(`${user.first_name || ''} ${user.last_name || ''}`.trim());
+    }
+  }, [searchParams, user]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -30,7 +49,7 @@ const Contact = () => {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-8 items-start">
         {/* Contact details */}
         <div className="md:col-span-2 space-y-6">
-          <div className="bg-slate-850 border border-slate-800 p-5 rounded-3xl space-y-4">
+          <div className="bg-surface border border-line-soft p-5 rounded-3xl space-y-4">
             <h3 className="font-bold text-slate-100 text-sm">Corporate Office</h3>
             <div className="space-y-3.5 text-xs text-slate-300">
               <p className="flex items-center gap-3"><MapPin size={16} className="text-blue-500" /> Bengaluru, Karnataka, India</p>
@@ -41,7 +60,7 @@ const Contact = () => {
         </div>
 
         {/* Contact form */}
-        <form onSubmit={handleSubmit} className="md:col-span-3 bg-slate-850 border border-slate-800 p-6 rounded-3xl space-y-4">
+        <form onSubmit={handleSubmit} className="md:col-span-3 bg-surface border border-line-soft p-6 rounded-3xl space-y-4">
           <div>
             <label className="block text-xs text-slate-400 font-semibold mb-2">FULL NAME</label>
             <input
@@ -50,7 +69,7 @@ const Contact = () => {
               placeholder="e.g. John Doe"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
             />
           </div>
 
@@ -62,7 +81,7 @@ const Contact = () => {
               placeholder="e.g. john@example.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
             />
           </div>
 
@@ -74,7 +93,7 @@ const Contact = () => {
               placeholder="Type your inquiry details..."
               value={msg}
               onChange={e => setMsg(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors resize-none"
+              className="w-full px-4 py-2.5 bg-inset border border-line-soft rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors resize-none"
             />
           </div>
 

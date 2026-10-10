@@ -83,7 +83,7 @@ const TemplateCard = memo(function TemplateCard({
     <motion.div
       whileHover={{ y: -5, scale: 1.015 }}
       transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-      className="relative flex flex-col rounded-2xl overflow-hidden border border-[#1E293B] bg-[#0F1422] group hover:border-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 cursor-pointer"
+      className="relative flex flex-col rounded-2xl overflow-hidden border border-line-soft bg-inset group hover:border-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 cursor-pointer"
     >
       {/* Gradient border on hover */}
       <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
@@ -91,11 +91,11 @@ const TemplateCard = memo(function TemplateCard({
       />
 
       {/* Thumbnail / Preview */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-[#111827]">
+      <div className="relative aspect-[4/3] overflow-hidden bg-inset">
 
         {/* Skeleton shimmer */}
         {imgLoading && showThumbnail && (
-          <div className="absolute inset-0 bg-gradient-to-r from-[#1E293B] via-[#334155] to-[#1E293B] animate-pulse" />
+          <div className="absolute inset-0 bg-gradient-to-r from-surface via-raised-hover to-surface animate-pulse" />
         )}
 
         {/* Actual thumbnail image */}
@@ -133,7 +133,7 @@ const TemplateCard = memo(function TemplateCard({
               <span className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">
                 {template.occasion}
               </span>
-              <span className="text-white text-xs font-semibold text-center line-clamp-2 px-2">
+              <span className="text-white text-xs font-semibold text-center line-clamp-2 px-2 shadow-sm">
                 {template.title}
               </span>
             </div>
@@ -161,7 +161,7 @@ const TemplateCard = memo(function TemplateCard({
               FEATURED
             </span>
           )}
-          <span className="bg-black/60 backdrop-blur-sm text-[#CBD5E1] font-semibold text-[8px] px-2 py-0.5 rounded-full border border-white/10">
+          <span className="bg-black/60 backdrop-blur-sm text-slate-300 font-semibold text-[8px] px-2 py-0.5 rounded-full border border-white/10">
             {template.occasion}
           </span>
         </div>
@@ -175,16 +175,16 @@ const TemplateCard = memo(function TemplateCard({
         >
           <Heart
             size={12}
-            className={isFavorite ? 'fill-rose-500 text-rose-500' : 'text-[#94A3B8] hover:text-rose-400'}
+            className={isFavorite ? 'fill-rose-500 text-rose-500' : 'text-slate-400 hover:text-rose-400'}
           />
         </button>
 
         {/* Hover overlay with actions */}
-        <div className="absolute inset-0 bg-[#0B0F19]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-all duration-300 z-20">
+        <div className="absolute inset-0 bg-inset/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-all duration-300 z-20">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onPreview(template); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#1E293B] hover:bg-[#334155] text-[#F8FAFC] rounded-xl text-[10px] font-semibold border border-[#334155] transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-raised-hover text-fg rounded-xl text-[10px] font-semibold border border-line transition-all"
           >
             <Eye size={12} />
             Preview
@@ -201,14 +201,14 @@ const TemplateCard = memo(function TemplateCard({
       </div>
 
       {/* Card meta */}
-      <div className="p-3.5 flex flex-col gap-2 bg-[#0F1422]">
-        <h3 className="text-[#F8FAFC] font-bold text-xs line-clamp-1 group-hover:text-indigo-400 transition-colors">
+      <div className="p-3.5 flex flex-col gap-2 bg-inset">
+        <h3 className="text-fg font-bold text-xs line-clamp-1 group-hover:text-indigo-400 transition-colors">
           {template.title}
         </h3>
 
         <div className="flex flex-wrap gap-1">
           {template.style_badge && (
-            <span className="bg-[#1E293B] text-[#94A3B8] text-[8px] px-2 py-0.5 rounded-md border border-[#334155]">
+            <span className="bg-surface text-black dark:text-slate-400 text-[8px] px-2 py-0.5 rounded-md border border-line">
               {template.style_badge}
             </span>
           )}
@@ -222,7 +222,7 @@ const TemplateCard = memo(function TemplateCard({
         <button
           type="button"
           onClick={() => onUse(template)}
-          className="w-full py-2 bg-[#1E293B] hover:bg-indigo-600 text-[#CBD5E1] hover:text-white rounded-xl text-[10px] font-semibold border border-[#334155] hover:border-indigo-500 transition-all duration-250"
+          className="w-full py-2 bg-surface hover:bg-indigo-600 text-black dark:text-white hover:text-white rounded-xl text-[10px] font-semibold border border-line hover:border-indigo-500 transition-all duration-250"
         >
           Customize Card
         </button>

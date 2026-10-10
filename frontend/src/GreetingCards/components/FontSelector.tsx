@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 
 // Token aliases for consistent dark-mode design
-const INPUT_CLS = 'w-full bg-[#111827] text-[#F8FAFC] placeholder-[#94A3B8] text-xs rounded-xl px-3 py-2.5 border border-[#334155] outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all';
-const LABEL_CLS = 'text-[10px] text-[#CBD5E1] uppercase tracking-wider font-semibold mb-1.5 block';
+const INPUT_CLS = 'w-full bg-white dark:bg-slate-900 text-black dark:text-white placeholder:text-slate-400 text-xs rounded-xl px-3 py-2.5 border border-slate-300 dark:border-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all';
+const LABEL_CLS = 'text-[10px] text-black dark:text-slate-300 uppercase tracking-wider font-bold mb-1.5 block';
 
 const FONTS = [
   { name: 'Inter', preview: 'The quick brown fox' },
@@ -55,14 +55,14 @@ export default function FontSelector({ fontFamily, fontSize, textColor, onChange
               onClick={() => { loadFont(f.name); onChange('font_family', f.name); }}
               className={`px-3 py-2.5 text-xs rounded-xl border transition-all duration-200 text-left flex items-center justify-between ${
                 fontFamily === f.name
-                  ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300 font-semibold'
-                  : 'bg-[#111827] border-[#334155] text-[#CBD5E1] hover:bg-[#1E293B] hover:border-[#475569]'
+                  ? 'bg-indigo-50 dark:bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-bold'
+                  : 'bg-inset border-line text-black dark:text-white hover:bg-surface hover:border-line-strong'
               }`}
               style={{ fontFamily: f.name }}
             >
               <span>{f.name}</span>
               <span
-                className="text-[10px] opacity-50 truncate ml-2 max-w-[120px]"
+                className="text-[10px] text-slate-700 dark:text-slate-400 truncate ml-2 max-w-[120px]"
                 style={{ fontFamily: f.name }}
               >
                 {f.preview}
@@ -76,7 +76,7 @@ export default function FontSelector({ fontFamily, fontSize, textColor, onChange
       <div>
         <div className="flex justify-between items-center mb-2">
           <label className={LABEL_CLS.replace('mb-1.5', '')}>Font Size</label>
-          <span className="text-[10px] text-indigo-400 font-bold tabular-nums">{fontSize}px</span>
+          <span className="text-[10px] text-black dark:text-indigo-400 font-bold tabular-nums">{fontSize}px</span>
         </div>
         <div className="relative">
           <input
@@ -86,10 +86,10 @@ export default function FontSelector({ fontFamily, fontSize, textColor, onChange
             step="1"
             value={fontSize}
             onChange={(e) => onChange('font_size', parseInt(e.target.value))}
-            className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-indigo-600 bg-[#334155]"
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-indigo-600 bg-raised-hover"
             aria-label={`Font size: ${fontSize}px`}
           />
-          <div className="flex justify-between mt-1 text-[8px] text-[#64748B]">
+          <div className="flex justify-between mt-1 text-[8px] text-black dark:text-slate-400 font-bold">
             <span>12px</span>
             <span>42px</span>
           </div>
@@ -106,7 +106,7 @@ export default function FontSelector({ fontFamily, fontSize, textColor, onChange
                 type="color"
                 value={textColor?.startsWith('#') ? textColor : '#FFFFFF'}
                 onChange={(e) => onChange('text_color', e.target.value)}
-                className="w-9 h-9 rounded-lg border border-[#334155] cursor-pointer bg-[#111827] p-0.5"
+                className="w-9 h-9 rounded-lg border border-line cursor-pointer bg-inset p-0.5"
                 aria-label="Custom text color picker"
               />
             </div>
@@ -128,8 +128,8 @@ export default function FontSelector({ fontFamily, fontSize, textColor, onChange
             </div>
           </div>
           {/* Current color preview */}
-          <div className="flex items-center gap-2 text-[10px] text-[#94A3B8]">
-            <div className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: textColor }} />
+          <div className="flex items-center gap-2 text-[10px] text-black dark:text-slate-400 font-bold">
+            <div className="w-3 h-3 rounded-full border border-black/20 dark:border-white/20" style={{ backgroundColor: textColor }} />
             <span className="font-mono">{textColor?.toUpperCase()}</span>
           </div>
         </div>

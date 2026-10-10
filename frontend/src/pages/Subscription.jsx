@@ -1,21 +1,59 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { Check, ShieldCheck, BarChart3, Sparkles, Zap, Award } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import {
+  getPlanPriceDisplay,
+  getPlanButtonLabel,
+  formatUsageLimit,
+} from '../utils/pricing';
+import {
+  GlassCard, GlassButton, PageHeader, Skeleton
+} from '../components/ui';
+
+const UsageMeter = ({ label, used, limit, remaining }) => {
+  const hasLimit = limit !== null && limit !== undefined;
+  const pct = hasLimit && limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-baseline">
+        <span className="text-xs font-semibold text-fg">{label}</span>
+        <span className="text-xs text-slate-400 tabular-nums">
+          {used} / {formatUsageLimit(limit)} used this month
+        </span>
+      </div>
+      {hasLimit && (
+        <div className="h-2 bg-raised rounded-full overflow-hidden border border-line-soft">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {remaining !== null && remaining !== undefined && (
+        <p className="text-[11px] text-slate-500">{remaining} remaining</p>
+      )}
+    </div>
+  );
+};
 
 const Subscription = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [plans, setPlans] = useState([]);
+  const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [purchasingPlan, setPurchasingPlan] = useState(null);
 
   useEffect(() => {
     const fetchPlans = async () => {
       try {
         const res = await api.get('subscriptions/plans/');
-        setPlans(res.data.plans);
-      } catch (err) {
+        setPlans(res.data.plans || []);
+        setUsage(res.data.usage || null);
+      } catch {
         toast.error('Failed to load subscription plans.');
       } finally {
         setLoading(false);
@@ -24,107 +62,180 @@ const Subscription = () => {
     fetchPlans();
   }, []);
 
-  const handleSubscribe = async (planId) => {
-    if (user?.profile?.subscription_plan === planId) {
+  const handleSubscribe = (plan) => {
+    const planId = plan.id;
+    const isCurrent = user?.profile?.subscription_plan === planId;
+
+    if (isCurrent) {
       toast('You are already subscribed to this plan.');
       return;
     }
-    
-    try {
-      setPurchasingPlan(planId);
-      const res = await api.post('payments/checkout/', { planId, gateway: 'mock' });
-      toast.success('Redirecting to checkout sandbox...');
-      
-      // Simulate Stripe/Razorpay redirect by going to checkoutUrl
-      window.location.href = res.data.checkoutUrl;
-    } catch (err) {
-      toast.error('Payment checkout initiation failed.');
-    } finally {
-      setPurchasingPlan(null);
+
+    if (plan.contact_sales) {
+      navigate('/contact?subject=enterprise');
+      return;
     }
+
+    if (!plan.checkout_available) {
+      toast('This plan is not available for direct checkout.');
+      return;
+    }
+
+    navigate(`/checkout/${planId}`);
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Flexible SaaS Subscription Plans</h1>
-        <p className="text-slate-400 max-w-xl mx-auto text-sm">
-          Upgrade your plan to unlock unlimited wish logs, custom prompt templates, multi-channel (SMS/WhatsApp) deliveries, and team access.
+      <div className="text-center space-y-3 pt-2">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold">
+          <Sparkles size={14} />
+          <span>Predictable SaaS Pricing</span>
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-fg">
+          Flexible Subscription Plans
+        </h1>
+        <p className="text-slate-400 max-w-xl mx-auto text-sm leading-relaxed">
+          Choose the plan tailored to your celebration and outreach volume. All prices shown in Indian Rupees (INR).
         </p>
       </div>
 
+      {/* Usage summary for current plan */}
+      {usage && (
+        <GlassCard className="p-6 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <BarChart3 size={17} />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-fg">Current Month Usage</h2>
+              <p className="text-xs text-slate-500">Track your automated and AI allocations</p>
+            </div>
+            <span className="ml-auto text-[11px] font-bold tracking-wider uppercase bg-raised text-indigo-400 border border-line-soft px-3 py-1 rounded-full">
+              {usage.plan} Plan
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+            <UsageMeter
+              label="Scheduled Wishes"
+              used={usage.scheduled_wishes.used}
+              limit={usage.scheduled_wishes.limit}
+              remaining={usage.scheduled_wishes.remaining}
+            />
+            <UsageMeter
+              label="AI Generations"
+              used={usage.ai_generations.used}
+              limit={usage.ai_generations.limit}
+              remaining={usage.ai_generations.remaining}
+            />
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Pricing Cards */}
       {loading ? (
-        <div className="h-64 flex items-center justify-center">
-          <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map(n => (
+            <GlassCard key={n} className="p-6 space-y-4">
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-10 w-32" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </GlassCard>
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
           {plans.map(plan => {
             const isCurrent = user?.profile?.subscription_plan === plan.id;
+            const priceDisplay = getPlanPriceDisplay(plan);
+            const isEnterprise = plan.is_custom_pricing;
+            const isPro = plan.id === 'PRO' || plan.name?.toLowerCase().includes('pro');
+            const buttonLabel = getPlanButtonLabel(plan, isCurrent);
+            const isDisabled = isCurrent || (plan.id === 'FREE' && !isCurrent);
+
             return (
-              <div 
+              <GlassCard
                 key={plan.id}
-                className={`bg-slate-850 border rounded-3xl p-6 flex flex-col justify-between transition-all relative ${
-                  isCurrent 
-                    ? 'border-blue-500 ring-2 ring-blue-500/20' 
-                    : 'border-slate-800 hover:border-slate-700'
+                className={`p-6 flex flex-col justify-between relative transition-all duration-300 ${
+                  isCurrent
+                    ? '!border-indigo-500 shadow-glow'
+                    : isPro
+                    ? 'border-indigo-500/40 bg-gradient-to-b from-indigo-500/[0.08] to-transparent'
+                    : isEnterprise
+                    ? 'border-amber-500/40 bg-gradient-to-b from-amber-500/[0.08] to-transparent'
+                    : ''
                 }`}
               >
                 {isCurrent && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 border border-blue-500 text-[10px] font-extrabold tracking-wider px-3 py-1 rounded-full uppercase">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] font-bold tracking-wider px-3.5 py-1 rounded-full uppercase shadow-md">
                     Current Plan
                   </span>
                 )}
 
-                <div className="space-y-4">
+                {isPro && !isCurrent && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-bold tracking-wider px-3 py-1 rounded-full uppercase shadow-sm">
+                    Most Popular
+                  </span>
+                )}
+
+                {isEnterprise && !isCurrent && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-600 text-white text-[10px] font-bold tracking-wider px-3 py-1 rounded-full uppercase shadow-sm">
+                    Enterprise
+                  </span>
+                )}
+
+                <div className="space-y-5">
                   <div>
-                    <h3 className="font-bold text-lg text-slate-100">{plan.name}</h3>
-                    <div className="mt-2 flex items-baseline">
-                      <span className="text-3xl font-extrabold text-white">${plan.price}</span>
-                      <span className="text-slate-500 text-xs ml-1">/month</span>
+                    <h3 className="font-bold text-lg text-fg">{plan.name}</h3>
+                    <div className="mt-3">
+                      <div className="flex items-baseline">
+                        <span className={`text-3xl font-extrabold ${isEnterprise ? 'text-amber-400' : 'text-fg'}`}>
+                          {priceDisplay.main}
+                        </span>
+                        {priceDisplay.period && (
+                          <span className="text-slate-500 text-xs ml-1.5 font-medium">{priceDisplay.period}</span>
+                        )}
+                      </div>
+                      {priceDisplay.subtitle && (
+                        <p className="text-[11px] text-slate-400 mt-1">{priceDisplay.subtitle}</p>
+                      )}
                     </div>
                   </div>
 
-                  <ul className="space-y-2.5 pt-4 border-t border-slate-800">
+                  <ul className="space-y-3 pt-4 border-t border-line-soft">
                     {plan.features.map((feat, idx) => (
-                      <li key={idx} className="flex gap-2 items-start text-xs text-slate-300">
-                        <Check size={14} className="text-blue-500 shrink-0 mt-0.5" />
+                      <li key={idx} className="flex gap-2.5 items-start text-xs text-slate-300 leading-snug">
+                        <Check size={14} className={`shrink-0 mt-0.5 ${isEnterprise ? 'text-amber-400' : 'text-indigo-400'}`} />
                         <span>{feat}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="pt-6">
-                  <button
-                    onClick={() => handleSubscribe(plan.id)}
-                    disabled={isCurrent || purchasingPlan !== null}
-                    className={`w-full py-2.5 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                      isCurrent
-                        ? 'bg-slate-800 text-slate-400 cursor-default'
-                        : purchasingPlan === plan.id
-                        ? 'bg-blue-600/50 text-white cursor-wait'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg'
-                    }`}
+                <div className="pt-6 mt-4 border-t border-line-soft/60">
+                  <GlassButton
+                    variant={isCurrent ? 'secondary' : isEnterprise ? 'accent' : isPro ? 'primary' : 'secondary'}
+                    className="w-full"
+                    disabled={isDisabled}
+                    onClick={() => handleSubscribe(plan)}
                   >
-                    {purchasingPlan === plan.id && <Loader2 size={12} className="animate-spin" />}
-                    {isCurrent ? 'Active' : `Upgrade to ${plan.id}`}
-                  </button>
+                    {buttonLabel}
+                  </GlassButton>
                 </div>
-              </div>
+              </GlassCard>
             );
           })}
         </div>
       )}
 
       {/* Security Footer */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-center bg-slate-900/40 border border-slate-850 p-4 rounded-2xl text-center sm:text-left">
-        <ShieldCheck className="text-emerald-400" size={24} />
+      <GlassCard className="p-4 flex flex-col sm:flex-row gap-3.5 items-center justify-center text-center sm:text-left">
+        <ShieldCheck className="text-emerald-400 shrink-0" size={24} />
         <p className="text-xs text-slate-400">
           All checkouts are simulated securely using our sandbox payment gateway. No real credit cards or financial charges are required.
         </p>
-      </div>
+      </GlassCard>
     </div>
   );
 };

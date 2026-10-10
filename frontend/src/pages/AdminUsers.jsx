@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Edit2, Shield, Trash2, KeyRound } from 'lucide-react';
+import { Search, Edit2, Trash2 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { getUserDisplayName } from '../utils/user';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
@@ -52,44 +53,51 @@ const AdminUsers = () => {
     }
   };
 
-  const filtered = users.filter(u => 
-    u.username.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = users.filter(u => {
+    const term = searchTerm.toLowerCase();
+    const displayName = getUserDisplayName(u).toLowerCase();
+    return (
+      displayName.includes(term) ||
+      u.username?.toLowerCase().includes(term) ||
+      u.first_name?.toLowerCase().includes(term) ||
+      u.last_name?.toLowerCase().includes(term) ||
+      u.email?.toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-        <p className="text-slate-400 text-sm">Assign subscription levels, set system roles, and audit credentials.</p>
+        <p className="text-muted text-sm">Assign subscription levels, set system roles, and audit credentials.</p>
       </div>
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3.5 top-3 text-slate-500" size={18} />
+        <Search className="absolute left-3.5 top-3 text-subtle" size={18} />
         <input
           type="text"
-          placeholder="Search by username or email..."
+          placeholder="Search by name or email..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-slate-800/40 border border-slate-700/50 rounded-xl text-sm focus:outline-none focus:border-blue-500 text-white"
+          className="w-full pl-10 pr-4 py-2.5 bg-raised/40 border border-line/50 rounded-xl text-sm focus:outline-none focus:border-blue-500 text-fg"
         />
       </div>
 
       {/* Users List */}
-      <div className="bg-slate-850 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      <div className="bg-surface/80 backdrop-blur-md border border-line rounded-3xl overflow-hidden shadow-xl">
         {loading ? (
           <div className="h-48 flex items-center justify-center">
             <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 text-sm">No users found.</div>
+          <div className="text-center py-12 text-subtle text-sm">No users found.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-900 text-slate-400 font-semibold border-b border-slate-800">
+                <tr className="bg-inset text-muted font-semibold border-b border-line">
                   <th className="p-4">USER</th>
                   <th className="p-4">PLAN</th>
                   <th className="p-4">ROLE</th>
@@ -98,13 +106,13 @@ const AdminUsers = () => {
                   <th className="p-4 text-right">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-line-soft/60">
                 {filtered.map(u => (
-                  <tr key={u.id} className="hover:bg-slate-800/20 text-slate-300">
+                  <tr key={u.id} className="hover:bg-raised/20 text-muted">
                     <td className="p-4">
                       <div>
-                        <p className="font-bold text-slate-200">{u.username}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{u.email}</p>
+                        <p className="font-bold text-fg">{getUserDisplayName(u)}</p>
+                        <p className="text-[10px] text-subtle mt-0.5">{u.email}</p>
                       </div>
                     </td>
                     <td className="p-4">
@@ -121,7 +129,7 @@ const AdminUsers = () => {
                       {u.profile?.email_verified ? (
                         <span className="text-emerald-400 font-bold">Yes</span>
                       ) : (
-                        <span className="text-slate-500">No</span>
+                        <span className="text-subtle">No</span>
                       )}
                     </td>
                     <td className="p-4">
@@ -135,13 +143,13 @@ const AdminUsers = () => {
                             setEditPlan(u.profile?.subscription_plan || 'FREE');
                             setEditRole(u.profile?.role || 'free');
                           }}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700/50"
+                          className="p-1.5 bg-raised hover:bg-raised-hover text-muted hover:text-fg rounded-lg border border-line/50"
                         >
                           <Edit2 size={12} />
                         </button>
                         <button
                           onClick={() => handleDelete(u.id)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-400 rounded-lg border border-slate-700/50"
+                          className="p-1.5 bg-raised hover:bg-raised-hover text-muted hover:text-rose-400 rounded-lg border border-line/50"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -157,20 +165,20 @@ const AdminUsers = () => {
 
       {/* Edit User Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 max-w-sm w-full rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold">Manage Account: {selectedUser.username}</h3>
-              <button onClick={() => setSelectedUser(null)} className="text-slate-400 hover:text-white text-xs">Cancel</button>
+        <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-50">
+          <div className="bg-inset border border-line max-w-sm w-full rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-line pb-3">
+              <h3 className="text-sm font-bold">Manage Account: {getUserDisplayName(selectedUser)}</h3>
+              <button onClick={() => setSelectedUser(null)} className="text-muted hover:text-fg text-xs">Cancel</button>
             </div>
             
             <form onSubmit={handleUpdate} className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-2">SUBSCRIPTION PLAN</label>
+                <label className="block text-xs text-muted font-semibold mb-2">SUBSCRIPTION PLAN</label>
                 <select
                   value={editPlan}
                   onChange={e => setEditPlan(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-white"
+                  className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-fg"
                 >
                   <option value="FREE">Free</option>
                   <option value="PRO">Pro</option>
@@ -180,11 +188,11 @@ const AdminUsers = () => {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-2">PLATFORM ROLE</label>
+                <label className="block text-xs text-muted font-semibold mb-2">PLATFORM ROLE</label>
                 <select
                   value={editRole}
                   onChange={e => setEditRole(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-white"
+                  className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-fg"
                 >
                   <option value="free">Free User</option>
                   <option value="premium">Premium User</option>

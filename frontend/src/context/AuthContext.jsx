@@ -10,22 +10,45 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('user');
+      const token = localStorage.getItem('access_token');
+      return token && savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return Boolean(localStorage.getItem('access_token') && localStorage.getItem('user'));
+  });
+  const [loading, setLoading] = useState(false);
 
-  // Restore session from localStorage on mount
+  // Sync session check & re-hydrate freshest profile data
   useEffect(() => {
     const accessToken = localStorage.getItem('access_token');
     const savedUser = localStorage.getItem('user');
 
     if (accessToken && savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
         setIsAuthenticated(true);
+        // Silently re-hydrate freshest profile data from backend
+        authAPI.getProfile().then((resp) => {
+          if (resp?.data) {
+            localStorage.setItem('user', JSON.stringify(resp.data));
+            setUser(resp.data);
+          }
+        }).catch(() => {});
       } catch {
         localStorage.removeItem('user');
+        setUser(null);
+        setIsAuthenticated(false);
       }
+    } else {
+      setUser(null);
+      setIsAuthenticated(false);
     }
     setLoading(false);
   }, []);
@@ -83,13 +106,23 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   }, []);
 
+  // Synchronously update local user state and storage with fresh server data
+  const updateUser = useCallback((updatedUser) => {
+    if (updatedUser) {
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    }
+  }, []);
+
   // Refresh user profile from backend
   const refreshUser = useCallback(async () => {
     try {
       const resp = await authAPI.getProfile();
       const updatedUser = resp.data;
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
+      if (updatedUser) {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      }
       return updatedUser;
     } catch {
       // If profile fetch fails with 401, the interceptor in api.js will handle it
@@ -149,6 +182,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         refreshUser,
+        updateUser,
         googleLogin,
         microsoftLogin,
       }}

@@ -202,7 +202,12 @@ if not CELERY_TASK_ALWAYS_EAGER:
 # Celery Beat — Periodic Tasks
 from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
-    # Run daily wish check every day at 7:00 AM (server timezone)
+    # Process due scheduled wishes every minute
+    'process-due-schedules': {
+        'task': 'core.tasks.process_due_schedules_task',
+        'schedule': 60.0,
+    },
+    # Run daily contact birthday/anniversary scan every day at 7:00 AM (server timezone)
     'daily-wish-check': {
         'task': 'core.tasks.check_daily_wishes_task',
         'schedule': crontab(hour=7, minute=0),
@@ -214,12 +219,19 @@ EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.Email
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'autowish.ai@gmail.com')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'AutoWish AI <autowish.ai@gmail.com>')
 
 # Frontend URL (used in email links)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# Password Reset Configuration
+PASSWORD_RESET_OTP_EXPIRY_MINUTES = int(os.getenv('PASSWORD_RESET_OTP_EXPIRY_MINUTES', 5))
+PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = int(os.getenv('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', 15))
+PASSWORD_RESET_COOLDOWN_SECONDS = int(os.getenv('PASSWORD_RESET_COOLDOWN_SECONDS', 60))
+PASSWORD_RESET_MAX_ATTEMPTS = int(os.getenv('PASSWORD_RESET_MAX_ATTEMPTS', 5))
 
 # Feature flags
 ENABLE_AI = os.getenv('ENABLE_AI', 'True') == 'True'

@@ -46,7 +46,7 @@ export default function Avatar({ src, name = 'User', size = 'md', className = ''
         src={src}
         alt={name}
         onError={() => setImgError(true)}
-        className={`${selectedSizeClass} rounded-full object-cover ring-1 ring-slate-700/60 shadow-sm ${className}`}
+        className={`${selectedSizeClass} rounded-full object-cover ring-1 ring-line/60 shadow-sm ${className}`}
       />
     );
   }

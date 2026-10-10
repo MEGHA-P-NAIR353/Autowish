@@ -69,7 +69,7 @@ export default function StickerPicker({ onSelectSticker, selectedSticker }: Stic
             className={`px-2.5 py-1.5 rounded-lg text-[9px] font-bold whitespace-nowrap transition-all duration-200 flex-shrink-0 ${
               activePack === pack
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'bg-[#111827] text-[#94A3B8] hover:text-[#CBD5E1] hover:bg-[#1E293B] border border-[#334155]'
+                : 'bg-inset text-black dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-surface border border-line'
             }`}
           >
             {pack}
@@ -87,12 +87,12 @@ export default function StickerPicker({ onSelectSticker, selectedSticker }: Stic
             className={`flex flex-col items-center justify-center py-3 rounded-xl border transition-all duration-200 hover:scale-105 ${
               selectedSticker === sticker.emoji
                 ? 'bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-500/10'
-                : 'bg-[#111827] border-[#334155] hover:bg-[#1E293B] hover:border-[#475569]'
+                : 'bg-inset border-line hover:bg-surface hover:border-line-strong'
             }`}
             aria-label={`Sticker: ${sticker.label}`}
           >
             <span className="text-2xl mb-1.5">{sticker.emoji}</span>
-            <span className="text-[9px] text-[#94A3B8] font-medium truncate w-full text-center px-1">
+            <span className="text-[9px] text-black dark:text-slate-300 font-bold truncate w-full text-center px-1">
               {sticker.label}
             </span>
           </button>
@@ -101,14 +101,14 @@ export default function StickerPicker({ onSelectSticker, selectedSticker }: Stic
 
       {/* Selection indicator */}
       {selectedSticker && (
-        <div className="flex items-center justify-between px-3 py-2 bg-[#111827] rounded-xl border border-[#334155]">
-          <span className="text-[10px] text-[#94A3B8] font-medium">Active sticker</span>
+        <div className="flex items-center justify-between px-3 py-2 bg-inset rounded-xl border border-line">
+          <span className="text-[10px] text-black dark:text-slate-300 font-bold">Active sticker</span>
           <div className="flex items-center gap-2">
             <span className="text-2xl">{selectedSticker}</span>
             <button
               type="button"
               onClick={() => onSelectSticker('')}
-              className="text-[9px] text-[#64748B] hover:text-rose-400 transition-colors"
+              className="text-[9px] text-slate-500 hover:text-rose-400 transition-colors"
             >
               Clear
             </button>

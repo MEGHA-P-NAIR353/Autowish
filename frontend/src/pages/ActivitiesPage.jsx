@@ -52,7 +52,7 @@ const ActivitiesPage = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Activity Log</h1>
-          <p className="text-[#94A3B8]">A complete history of your actions</p>
+          <p className="text-slate-400">A complete history of your actions</p>
         </div>
         <button 
           onClick={() => { setPage(1); fetchAllActivities(1); fetchRecentActivity(); }} 
@@ -69,43 +69,43 @@ const ActivitiesPage = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-[#334155] bg-slate-800/50">
-                  <th className="px-6 py-4 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Activity</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-[#64748B] uppercase tracking-wider text-right">Time</th>
+                <tr className="border-b border-line bg-raised/50">
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Activity</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Time</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#334155]">
+              <tbody className="divide-y divide-line">
                 {loading ? (
                   [1, 2, 3, 4, 5].map(i => (
                     <tr key={i} className="animate-pulse">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-slate-700 rounded-full" />
-                          <div className="h-4 bg-slate-700 rounded w-48" />
+                          <div className="w-10 h-10 bg-raised-hover rounded-full" />
+                          <div className="h-4 bg-raised-hover rounded w-48" />
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="h-3 bg-slate-700 rounded w-20 ml-auto" />
+                        <div className="h-3 bg-raised-hover rounded w-20 ml-auto" />
                       </td>
                     </tr>
                   ))
                 ) : activities.length > 0 ? (
                   activities.map(act => (
-                    <tr key={act.id} className="hover:bg-slate-800/30 transition-colors">
+                    <tr key={act.id} className="hover:bg-raised/30 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-slate-900 border border-[#334155] rounded-xl flex items-center justify-center shrink-0">
+                          <div className="w-10 h-10 bg-inset border border-line rounded-xl flex items-center justify-center shrink-0">
                             {getActivityIcon(act.action_type)}
                           </div>
                           <div>
                             <div className="text-sm font-medium text-slate-200">{act.title}</div>
-                            {act.description && <div className="text-xs text-[#64748B] mt-0.5">{act.description}</div>}
+                            {act.description && <div className="text-xs text-slate-500 mt-0.5">{act.description}</div>}
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="text-sm text-slate-400">{act.relative_time}</div>
-                        <div className="text-[10px] text-[#64748B] mt-0.5">
+                        <div className="text-[10px] text-slate-500 mt-0.5">
                           {new Date(act.created_at).toLocaleString()}
                         </div>
                       </td>
@@ -128,22 +128,22 @@ const ActivitiesPage = () => {
         </div>
 
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-[#334155] flex items-center justify-between bg-slate-800/20">
-            <div className="text-xs text-[#64748B]">
+          <div className="px-6 py-4 border-t border-line flex items-center justify-between bg-raised/20">
+            <div className="text-xs text-slate-500">
               Showing {(page - 1) * limit + 1} to {Math.min(page * limit, count)} of {count} activities
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1 || loading}
-                className="p-2 bg-[#1E293B] border border-[#334155] rounded-lg disabled:opacity-50 hover:bg-[#334155] transition-colors"
+                className="p-2 bg-surface border border-line rounded-lg disabled:opacity-50 hover:bg-raised-hover transition-colors"
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages || loading}
-                className="p-2 bg-[#1E293B] border border-[#334155] rounded-lg disabled:opacity-50 hover:bg-[#334155] transition-colors"
+                className="p-2 bg-surface border border-line rounded-lg disabled:opacity-50 hover:bg-raised-hover transition-colors"
               >
                 <ChevronRight size={16} />
               </button>

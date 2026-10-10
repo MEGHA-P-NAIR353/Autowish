@@ -6,7 +6,7 @@ from django.db import models as db_models
 from .models import (
     UserProfile, Contact, Event, GreetingTemplate, ScheduledWish,
     EmailLog, GeneratedGreeting, AIPrompt, Notification,
-    SubscriptionTransaction, AuditLog, GreetingCardTemplate
+    SubscriptionTransaction, AuditLog, GreetingCardTemplate, PasswordResetOTP
 )
 
 
@@ -17,7 +17,8 @@ class UserProfileInline(admin.StackedInline):
     verbose_name_plural = 'Profile'
     fields = (
         'phone', 'country', 'timezone', 'preferred_language',
-        'avatar', 'subscription_plan', 'role', 'email_verified',
+        'avatar', 'subscription_plan', 'custom_scheduled_wish_limit',
+        'custom_ai_generation_limit', 'role', 'email_verified',
     )
 
 
@@ -106,9 +107,9 @@ class AIPromptAdmin(admin.ModelAdmin):
 # ─── Notification ─────────────────────────────────────────────────────────────
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'title', 'type', 'is_read', 'created_at')
-    list_filter = ('type', 'is_read')
-    search_fields = ('title', 'message', 'user__username')
+    list_display = ('user', 'title', 'type', 'category', 'event_type', 'is_read', 'created_at')
+    list_filter = ('type', 'category', 'is_read')
+    search_fields = ('title', 'message', 'user__username', 'category', 'event_type')
     ordering = ('-created_at',)
 
 
@@ -124,11 +125,11 @@ class SubscriptionTransactionAdmin(admin.ModelAdmin):
 # ─── Audit Log ─────────────────────────────────────────────────────────────
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ('user', 'action', 'ip_address', 'created_at')
-    list_filter = ('action',)
-    search_fields = ('user__username', 'action', 'details')
+    list_display = ('actor_name', 'user', 'action', 'event_type', 'ip_address', 'created_at')
+    list_filter = ('action', 'event_type')
+    search_fields = ('actor_name', 'user__username', 'action', 'details', 'previous_name', 'updated_name')
     ordering = ('-created_at',)
-    readonly_fields = ('user', 'action', 'details', 'ip_address', 'created_at')
+    readonly_fields = ('user', 'action', 'event_type', 'actor_name', 'previous_name', 'updated_name', 'details', 'ip_address', 'created_at')
 
 
 # ─── Greeting Card Template ───────────────────────────────────────────────────
@@ -263,3 +264,13 @@ class GreetingCardTemplateAdmin(admin.ModelAdmin):
 
 
 admin.site.register(GreetingCardTemplate, GreetingCardTemplateAdmin)
+
+
+@admin.register(PasswordResetOTP)
+class PasswordResetOTPAdmin(admin.ModelAdmin):
+    list_display = ('email', 'user', 'created_at', 'expires_at', 'attempts', 'is_verified', 'is_used', 'is_invalidated', 'ip_address')
+    list_filter = ('is_verified', 'is_used', 'is_invalidated', 'created_at')
+    search_fields = ('email', 'user__username', 'user__email', 'ip_address')
+    readonly_fields = ('otp_hash', 'reset_token', 'created_at', 'expires_at', 'verified_at', 'used_at', 'ip_address')
+    ordering = ('-created_at',)
+

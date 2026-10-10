@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Landing & Auth
 import LandingPage from './pages/LandingPage';
@@ -31,7 +32,10 @@ import Templates from './pages/Templates';
 import Notifications from './pages/Notifications';
 import Subscription from './pages/Subscription';
 import Billing from './pages/Billing';
-import Payments from './pages/Payments';
+import Checkout from './pages/Checkout';
+import DummyPayment from './pages/DummyPayment';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentFailed from './pages/PaymentFailed';
 import HelpCenter from './pages/HelpCenter';
 import Contact from './pages/Contact';
 import About from './pages/About';
@@ -60,7 +64,14 @@ import GreetingPreview from './GreetingCards/pages/GreetingPreview';
 
 // Protected Route Guard
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-app">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
@@ -183,10 +194,31 @@ function AppRoutes() {
           </DashboardLayout>
         </ProtectedRoute>
       } />
-      <Route path="/payments" element={
+      <Route path="/checkout/:plan" element={
         <ProtectedRoute>
           <DashboardLayout>
-            <Payments />
+            <Checkout />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/payment/success" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <PaymentSuccess />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/payment/failed" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <PaymentFailed />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/payment/:paymentId" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <DummyPayment />
           </DashboardLayout>
         </ProtectedRoute>
       } />
@@ -315,11 +347,13 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <AppRoutes />
-      </DataProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <DataProvider>
+          <AppRoutes />
+        </DataProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

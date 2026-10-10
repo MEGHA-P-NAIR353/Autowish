@@ -11,7 +11,15 @@ export default function ExportModal({ canvasRef, card, cardId, onClose }) {
 
   const handleDownload = async () => {
     setExporting(true);
+    const safeTitle = (card.title || 'greeting-card').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'greeting-card';
+    const cardW = Number(card.cardWidth) || 500;
+    const cardH = Number(card.cardHeight) || 500;
+
     try {
+      if (!canvasRef?.current) {
+        throw new Error('Canvas reference is not available');
+      }
+
       const html2canvas = (await import('html2canvas')).default;
       const scale = resolution === 'high' ? 2 : 1;
 
@@ -24,7 +32,7 @@ export default function ExportModal({ canvasRef, card, cardId, onClose }) {
       const canvas = await html2canvas(canvasRef.current, {
         useCORS: true,
         scale: scale,
-        backgroundColor: transparent && format === 'png' ? null : card.backgroundColor,
+        backgroundColor: transparent && format === 'png' ? null : (card.backgroundColor || '#1a1a2e'),
       });
 
       // Restore background
@@ -32,40 +40,47 @@ export default function ExportModal({ canvasRef, card, cardId, onClose }) {
 
       if (format === 'pdf') {
         const { default: jsPDF } = await import('jspdf');
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
         const pdf = new jsPDF({
-          orientation: card.cardWidth > card.cardHeight ? 'l' : 'p',
+          orientation: cardW > cardH ? 'l' : 'p',
           unit: 'px',
-          format: [card.cardWidth, card.cardHeight],
+          format: [cardW, cardH],
         });
-        pdf.addImage(imgData, 'JPEG', 0, 0, card.cardWidth, card.cardHeight);
-        pdf.save(`${card.title || 'greeting-card'}.pdf`);
+        pdf.addImage(imgData, 'JPEG', 0, 0, cardW, cardH);
+        pdf.save(`${safeTitle}.pdf`);
       } else {
         const link = document.createElement('a');
-        link.download = `${card.title || 'greeting-card'}.${format}`;
-        link.href = canvas.toDataURL(`image/${format === 'png' ? 'png' : 'jpeg'}`, 1.0);
+        link.download = `${safeTitle}.${format}`;
+        link.href = canvas.toDataURL(`image/${format === 'png' ? 'png' : 'jpeg'}`, 0.95);
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
       }
 
-      toast.success('Card exported!');
+      toast.success('Card exported successfully!');
       onClose();
     } catch (err) {
-      toast.error('Client-side export failed, calling server backup...');
+      console.warn('Client-side export error, trying backup:', err);
       // Backup server-side download
       if (cardId) {
         try {
           const res = await cardsAPI.exportCard(cardId, format);
-          const url = window.URL.createObjectURL(new Blob([res.data]));
+          const mimeType = format === 'pdf' ? 'application/pdf' : `image/${format}`;
+          const url = window.URL.createObjectURL(new Blob([res.data], { type: mimeType }));
           const link = document.createElement('a');
           link.href = url;
-          link.setAttribute('download', `${card.title || 'card'}.${format}`);
+          link.setAttribute('download', `${safeTitle}.${format}`);
           document.body.appendChild(link);
           link.click();
-          link.remove();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          toast.success('Card exported successfully!');
           onClose();
         } catch {
-          toast.error('Server export failed too.');
+          toast.error('Card export failed. Please try saving first.');
         }
+      } else {
+        toast.error('Export failed. Please save the card first.');
       }
     } finally {
       setExporting(false);

@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { User, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  AmbientBackground,
+  GlassCard,
+  GlassInput,
+  GlassButton,
+  Field,
+  ThemeToggle,
+} from '../components/ui';
 
 const RegisterPage = () => {
   const [formData, setFormData] = useState({
-    name: '', email: '', password: '', confirmPassword: ''
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -23,63 +35,124 @@ const RegisterPage = () => {
     }
     setLoading(true);
     try {
-      await register({ name: formData.name, email: formData.email, password: formData.password });
+      await register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+      });
       toast.success('Account created successfully!');
       navigate('/dashboard');
     } catch (err) {
-      toast.error('Registration failed');
+      toast.error(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6">
-      <div className="w-full max-w-[420px]">
+    <div className="min-h-screen bg-app text-fg flex items-center justify-center p-6 relative overflow-hidden">
+      <AmbientBackground />
+
+      {/* Top right theme toggle */}
+      <div className="absolute top-5 right-5 z-20">
+        <ThemeToggle />
+      </div>
+
+      <div className="w-full max-w-[420px] relative z-10">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <span className="text-white text-3xl font-bold">A</span>
             </div>
           </div>
-          <h1 className="text-3xl font-bold">Create your account</h1>
-          <p className="text-[#94A3B8] mt-1">Join thousands automating special moments</p>
+          <h1 className="text-3xl font-bold text-fg tracking-tight">Create your account</h1>
+          <p className="text-muted mt-1 text-sm">Join thousands automating special moments</p>
         </div>
 
-        <div className="card p-7">
+        <GlassCard className="p-7">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs font-medium text-[#94A3B8] block mb-1.5">Full Name</label>
-              <input type="text" name="name" value={formData.name} onChange={handleChange} className="input" placeholder="e.g. Jane Smith" required />
-            </div>
+            <Field label="Full Name" required>
+              <div className="relative">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={17} />
+                <GlassInput
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="pl-10"
+                  placeholder="e.g. Jane Smith"
+                  required
+                />
+              </div>
+            </Field>
 
-            <div>
-              <label className="text-xs font-medium text-[#94A3B8] block mb-1.5">Email Address</label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} className="input" placeholder="you@example.com" required />
-            </div>
+            <Field label="Email Address" required>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={17} />
+                <GlassInput
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="pl-10"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+            </Field>
 
-            <div>
-              <label className="text-xs font-medium text-[#94A3B8] block mb-1.5">Password</label>
-              <input type="password" name="password" value={formData.password} onChange={handleChange} className="input" placeholder="••••••••" required />
-            </div>
+            <Field label="Password" required>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={17} />
+                <GlassInput
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="pl-10"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </Field>
 
-            <div>
-              <label className="text-xs font-medium text-[#94A3B8] block mb-1.5">Confirm Password</label>
-              <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="input" placeholder="••••••••" required />
-            </div>
+            <Field label="Confirm Password" required>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={17} />
+                <GlassInput
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className="pl-10"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </Field>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full py-[13px] mt-2">
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </button>
+            <GlassButton
+              type="submit"
+              variant="primary"
+              loading={loading}
+              className="w-full py-3 font-semibold mt-2"
+            >
+              Create Account
+            </GlassButton>
           </form>
 
-          <div className="text-center mt-5 text-xs text-[#64748B]">
-            By signing up you agree to our <span className="text-blue-400">Terms</span> & <span className="text-blue-400">Privacy Policy</span>
+          <div className="text-center mt-5 text-xs text-subtle">
+            By signing up you agree to our{' '}
+            <span className="text-primary hover:underline cursor-pointer">Terms</span> &{' '}
+            <span className="text-primary hover:underline cursor-pointer">Privacy Policy</span>
           </div>
-        </div>
+        </GlassCard>
 
-        <p className="text-center mt-6 text-sm text-[#64748B]">
-          Already have an account? <Link to="/login" className="text-blue-400 hover:underline font-medium">Sign in</Link>
+        <p className="text-center mt-6 text-sm text-subtle">
+          Already have an account?{' '}
+          <Link to="/login" className="text-primary hover:underline font-medium">
+            Sign in
+          </Link>
         </p>
       </div>
     </div>

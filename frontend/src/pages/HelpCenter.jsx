@@ -30,9 +30,9 @@ const HelpCenter = () => {
         <p className="text-slate-400 text-sm">Need help? Read our platform guides or get in touch with our team.</p>
       </div>
 
-      <div className="bg-slate-850 border border-slate-800 p-6 rounded-3xl space-y-4">
+      <div className="bg-surface border border-line-soft p-6 rounded-3xl space-y-4">
         {faqs.map((faq, idx) => (
-          <div key={idx} className="border-b border-slate-850 pb-4 last:border-b-0 last:pb-0">
+          <div key={idx} className="border-b border-line-soft pb-4 last:border-b-0 last:pb-0">
             <button
               onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
               className="flex justify-between items-center w-full text-left py-2 hover:text-blue-400 transition-colors"
@@ -41,7 +41,7 @@ const HelpCenter = () => {
               {openIdx === idx ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {openIdx === idx && (
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed bg-slate-900/40 p-3.5 rounded-xl border border-slate-850/80">
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed bg-inset/40 p-3.5 rounded-xl border border-line-soft/80">
                 {faq.a}
               </p>
             )}

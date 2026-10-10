@@ -25,9 +25,9 @@ export default function TemplateGrid({
 }: TemplateGridProps) {
   if (templates.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-slate-800 rounded-3xl bg-[#131926]/10">
-        <SlidersHorizontal size={40} className="mb-4 text-slate-650" />
-        <h3 className="text-white font-semibold mb-1 text-sm">No Matching Templates</h3>
+      <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-line-soft rounded-3xl bg-inset/10">
+        <SlidersHorizontal size={40} className="mb-4 text-slate-600" />
+        <h3 className="text-fg font-semibold mb-1 text-sm">No Matching Templates</h3>
         <p className="text-xs max-w-xs text-center text-slate-400">
           Try adjusting your search query or filters to discover templates.
         </p>

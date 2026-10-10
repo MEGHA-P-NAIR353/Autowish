@@ -28,16 +28,31 @@ const EmailLogsPage = () => {
   };
 
   const exportCSV = () => {
+    if (!filteredLogs || filteredLogs.length === 0) {
+      toast.error('No email logs to export');
+      return;
+    }
     const csv = [
       ['Recipient', 'Subject', 'Status', 'Date', 'Delivery Status'],
-      ...filteredLogs.map(l => [l.recipient, l.subject, l.status, l.date, l.delivery])
-    ].map(r => r.join(',')).join('\n');
+      ...filteredLogs.map(l => [
+        l.recipient || '',
+        l.subject || '',
+        l.status || '',
+        l.date || '',
+        l.delivery || ''
+      ])
+    ].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+    a.href = url;
     a.download = 'email_logs.csv';
+    document.body.appendChild(a);
     a.click();
-    toast.success('Exported CSV');
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Exported email_logs.csv');
   };
 
   return (
@@ -45,7 +60,7 @@ const EmailLogsPage = () => {
       <div className="flex justify-between items-center mb-7">
         <div>
           <h1 className="text-3xl font-bold">Email Logs</h1>
-          <p className="text-[#94A3B8]">Track delivery of all scheduled wishes</p>
+          <p className="text-slate-400">Track delivery of all scheduled wishes</p>
         </div>
         <button onClick={exportCSV} className="btn-secondary flex items-center gap-2 text-sm">
           <Download size={16} /> Export CSV
@@ -90,7 +105,7 @@ const EmailLogsPage = () => {
                   </span>
                 </td>
                 <td className="text-sm">{log.date}</td>
-                <td className="text-sm text-[#94A3B8]">{log.delivery}</td>
+                <td className="text-sm text-slate-400">{log.delivery}</td>
                 <td>
                   {log.status === 'Failed' && (
                     <button onClick={() => retryEmail(log)} className="text-blue-400 flex items-center gap-1 text-sm">
@@ -99,7 +114,7 @@ const EmailLogsPage = () => {
                   )}
                 </td>
               </tr>
-            )) : <tr><td colSpan="6" className="text-center py-7 text-[#64748B]">No email logs found.</td></tr>}
+            )) : <tr><td colSpan="6" className="text-center py-7 text-slate-500">No email logs found.</td></tr>}
           </tbody>
         </table>
       </div>

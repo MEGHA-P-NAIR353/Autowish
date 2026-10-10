@@ -26,6 +26,14 @@ class UserProfile(models.Model):
     preferred_language = models.CharField(max_length=10, default='en')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     subscription_plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='FREE')
+    custom_scheduled_wish_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Enterprise custom monthly scheduled wish limit. Null = unlimited.'
+    )
+    custom_ai_generation_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Enterprise custom monthly AI generation limit. Null = unlimited.'
+    )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='free')
     email_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -141,7 +149,7 @@ class ScheduledWish(models.Model):
     message = models.TextField(blank=True, verbose_name="Message")
     timezone = models.CharField(max_length=50, default='Asia/Kolkata', verbose_name="Timezone")
     reminder_minutes = models.IntegerField(default=15, verbose_name="Reminder Minutes")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Scheduled', verbose_name="Status")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending', verbose_name="Status")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
@@ -204,6 +212,11 @@ class GeneratedGreeting(models.Model):
     is_favorite = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+        ]
+
     def __str__(self):
         return f"Greeting for {self.recipient}"
 
@@ -253,6 +266,9 @@ class Notification(models.Model):
     title = models.CharField(max_length=150)
     message = models.TextField()
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='system')
+    event_type = models.CharField(max_length=50, blank=True, null=True)
+    category = models.CharField(max_length=50, blank=True, null=True)
+    related_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='related_notifications')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -263,15 +279,32 @@ class SubscriptionTransaction(models.Model):
     GATEWAY_CHOICES = [
         ('stripe', 'Stripe'),
         ('razorpay', 'Razorpay'),
-        ('mock', 'Mock')
+        ('mock', 'Mock'),
     ]
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('SUCCESS', 'Success'),
+        ('FAILED', 'Failed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    PLAN_RANK = {'FREE': 0, 'PRO': 1, 'BUSINESS': 2, 'ENTERPRISE': 3}
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='subscription_transactions')
     gateway = models.CharField(max_length=20, choices=GATEWAY_CHOICES, default='mock')
-    transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    transaction_id = models.CharField(max_length=100, unique=True, blank=True, null=True)
     amount = models.DecimalField(decimal_places=2, max_digits=10)
+    currency = models.CharField(max_length=3, default='INR')
     plan = models.CharField(max_length=20)
-    status = models.CharField(max_length=20, default='Pending') # Pending, Completed, Failed
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', 'created_at']),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.plan} ({self.status})"
@@ -279,12 +312,17 @@ class SubscriptionTransaction(models.Model):
 class AuditLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     action = models.CharField(max_length=150)
+    event_type = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    actor_name = models.CharField(max_length=150, blank=True, null=True)
+    previous_name = models.CharField(max_length=150, blank=True, null=True)
+    updated_name = models.CharField(max_length=150, blank=True, null=True)
     details = models.TextField(blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username if self.user else 'System'} - {self.action}"
+        name = self.actor_name or (self.user.username if self.user else 'System')
+        return f"{name} - {self.action}"
 
 class ActivityLog(models.Model):
     ACTION_CHOICES = [
@@ -580,3 +618,50 @@ class GreetingCardFavorite(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ♥ {self.card.title}"
+
+
+class PasswordResetOTP(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_otps')
+    email = models.EmailField(db_index=True)
+    otp_hash = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    is_verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    is_used = models.BooleanField(default=False)
+    used_at = models.DateTimeField(null=True, blank=True)
+    is_invalidated = models.BooleanField(default=False)
+    reset_token = models.CharField(max_length=128, null=True, blank=True, unique=True, db_index=True)
+    reset_token_expires_at = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'is_invalidated', 'is_used']),
+            models.Index(fields=['reset_token', 'is_used']),
+            models.Index(fields=['created_at']),
+        ]
+        verbose_name = "Password Reset OTP"
+        verbose_name_plural = "Password Reset OTPs"
+
+    def __str__(self):
+        status = "Used" if self.is_used else ("Verified" if self.is_verified else ("Invalidated" if self.is_invalidated else "Active"))
+        return f"OTP for {self.email} ({status})"
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def is_reset_token_expired(self):
+        if not self.reset_token_expires_at:
+            return True
+        return timezone.now() > self.reset_token_expires_at
+
+    def verify_otp(self, raw_otp):
+        from django.contrib.auth.hashers import check_password
+        if not raw_otp or not self.otp_hash:
+            return False
+        return check_password(str(raw_otp).strip(), self.otp_hash)
+

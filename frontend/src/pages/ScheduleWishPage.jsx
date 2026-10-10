@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
@@ -21,7 +22,7 @@ const STATUS_CONFIG = {
   Pending:    { color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20', dot: 'bg-yellow-400', label: 'Pending' },
   Processing: { color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', dot: 'bg-orange-400', label: 'Processing' },
   Failed:     { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', dot: 'bg-rose-400', label: 'Failed' },
-  Cancelled:  { color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20', dot: 'bg-slate-400', label: 'Cancelled' },
+  Cancelled:  { color: 'text-muted', bg: 'bg-slate-500/10 border-line-strong/20', dot: 'bg-slate-400', label: 'Cancelled' },
 };
 
 const OCCASION_ICONS = {
@@ -60,14 +61,14 @@ function LoadingSkeleton() {
   return (
     <div className="space-y-3">
       {[1, 2, 3].map(i => (
-        <div key={i} className="bg-[#1E293B] rounded-2xl border border-slate-700/40 p-5 animate-pulse">
+        <div key={i} className="bg-surface rounded-2xl border border-line/40 p-5 animate-pulse">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-slate-700 rounded-xl" />
+            <div className="w-10 h-10 bg-raised-hover rounded-xl" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-slate-700 rounded w-1/3" />
-              <div className="h-3 bg-slate-700 rounded w-1/4" />
+              <div className="h-4 bg-raised-hover rounded w-1/3" />
+              <div className="h-3 bg-raised-hover rounded w-1/4" />
             </div>
-            <div className="h-6 bg-slate-700 rounded-full w-20" />
+            <div className="h-6 bg-raised-hover rounded-full w-20" />
           </div>
         </div>
       ))}
@@ -82,17 +83,17 @@ function EmptyState({ icon: iconProp, title, description, action }) {
       return iconProp;
     }
     const IconComponent = iconProp;
-    return <IconComponent className="text-slate-500" size={32} />;
+    return <IconComponent className="text-subtle" size={32} />;
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-20 h-20 rounded-2xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center mb-5">
+      <div className="w-20 h-20 rounded-2xl bg-raised/60 border border-line/50 flex items-center justify-center mb-5">
         {renderIcon()}
       </div>
-      <h3 className="text-slate-200 font-semibold text-lg mb-2">{title}</h3>
-      <p className="text-slate-500 text-sm max-w-xs mb-6">{description}</p>
+      <h3 className="text-fg font-semibold text-lg mb-2">{title}</h3>
+      <p className="text-subtle text-sm max-w-xs mb-6">{description}</p>
       {action && (
         <button onClick={action.onClick} className="btn-primary flex items-center gap-2 px-5 py-2.5">
           <Plus size={16} /> {action.label}
@@ -109,31 +110,31 @@ function DeleteDialog({ wish, onClose, onConfirm }) {
   return (
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+        className="fixed inset-0 z-[100] glass-overlay flex items-center justify-center p-4"
         onClick={onClose}>
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }} onClick={e => e.stopPropagation()}
-          className="bg-[#1E293B] border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+          className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full shadow-2xl">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
               <Trash2 className="text-rose-400" size={22} />
             </div>
             <div>
-              <h3 className="text-slate-100 font-bold text-lg">Delete Scheduled Wish?</h3>
-              <p className="text-slate-400 text-sm">This action cannot be undone.</p>
+              <h3 className="text-fg font-bold text-lg">Delete Scheduled Wish?</h3>
+              <p className="text-muted text-sm">This action cannot be undone.</p>
             </div>
           </div>
           {wish && (
-            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3 mb-5 flex items-center gap-3">
+            <div className="bg-raised/50 border border-line/50 rounded-xl p-3 mb-5 flex items-center gap-3">
               <Avatar name={wish.contact?.name} size="sm" />
               <div>
-                <div className="text-sm font-medium text-slate-200">{wish.contact?.name}</div>
-                <div className="text-xs text-slate-400">{wish.occasion} · {wish.date}</div>
+                <div className="text-sm font-medium text-fg">{wish.contact?.name}</div>
+                <div className="text-xs text-muted">{wish.occasion} · {wish.date}</div>
               </div>
             </div>
           )}
           <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 transition text-sm font-medium">
+            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-line-strong text-muted hover:bg-raised-hover transition text-sm font-medium">
               Cancel
             </button>
             <button onClick={onConfirm} className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition text-sm font-medium flex items-center justify-center gap-2">
@@ -169,12 +170,22 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
   };
 
   const handleDownload = () => {
-    if (!wish?.message) return;
-    const blob = new Blob([wish.message], { type: 'text/plain' });
+    if (!wish?.message) {
+      toast.error('No greeting message to download');
+      return;
+    }
+    const blob = new Blob([wish.message], { type: 'text/plain;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
+    const safeContact = (wish.contact?.name || 'recipient').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'recipient';
+    const safeOccasion = (wish.occasion || 'greeting').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'greeting';
     const a = document.createElement('a');
-    a.href = url; a.download = `greeting-${wish.contact?.name}-${wish.occasion}.txt`;
-    a.click(); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = `greeting-${safeContact}-${safeOccasion}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Greeting message downloaded!');
   };
 
   if (!wish) return null;
@@ -183,18 +194,18 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
   return (
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 z-50 glass-overlay"
         onClick={onClose}>
         <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 300 }}
           onClick={e => e.stopPropagation()}
-          className="absolute right-0 top-0 h-full w-full max-w-xl bg-[#0F172A] border-l border-slate-700/60 overflow-y-auto shadow-2xl">
+          className="absolute right-0 top-0 h-full w-full max-w-xl bg-inset border-l border-line/60 overflow-y-auto shadow-2xl">
           {/* Header */}
-          <div className="sticky top-0 z-10 bg-[#0F172A]/95 backdrop-blur border-b border-slate-700/50 px-6 py-4 flex items-center justify-between">
+          <div className="sticky top-0 z-10 bg-inset/95 backdrop-blur border-b border-line/50 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Avatar name={contact.name} size="sm" />
               <div>
-                <div className="text-slate-100 font-semibold text-sm">{contact.name}</div>
+                <div className="text-fg font-semibold text-sm">{contact.name}</div>
                 <StatusBadge status={wish.status} />
               </div>
             </div>
@@ -202,7 +213,7 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
               <button onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 text-xs font-medium flex items-center gap-1.5 transition">
                 <Edit2 size={13} /> Edit
               </button>
-              <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-700 flex items-center justify-center text-slate-400 transition">
+              <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-raised-hover flex items-center justify-center text-muted transition">
                 <X size={18} />
               </button>
             </div>
@@ -214,9 +225,9 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
               <div className="flex items-center gap-4 mb-4">
                 <Avatar name={contact.name} size="lg" />
                 <div>
-                  <div className="text-slate-100 font-semibold text-lg">{contact.name}</div>
-                  <div className="text-slate-400 text-sm">{contact.relationship || 'Contact'}</div>
-                  {contact.age && <div className="text-slate-500 text-xs mt-0.5">Age: {contact.age}</div>}
+                  <div className="text-fg font-semibold text-lg">{contact.name}</div>
+                  <div className="text-muted text-sm">{contact.relationship || 'Contact'}</div>
+                  {contact.age && <div className="text-subtle text-xs mt-0.5">Age: {contact.age}</div>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -252,9 +263,9 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
                 {wish.cancelled_at && <InfoItem icon={Ban} label="Cancelled At" value={formatDateTime(wish.cancelled_at)} />}
               </div>
               {wish.task_id && (
-                <div className="mt-3 bg-slate-800/50 rounded-lg p-3">
-                  <div className="text-[11px] text-slate-500 font-medium uppercase mb-1">Celery Task ID</div>
-                  <div className="text-xs text-slate-400 font-mono break-all">{wish.task_id}</div>
+                <div className="mt-3 bg-raised/50 rounded-lg p-3">
+                  <div className="text-[11px] text-subtle font-medium uppercase mb-1">Celery Task ID</div>
+                  <div className="text-xs text-muted font-mono break-all">{wish.task_id}</div>
                 </div>
               )}
               {wish.retry_count > 0 && (
@@ -273,18 +284,18 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
             {/* AI Greeting */}
             {wish.message && (
               <Section title="AI Greeting" icon={Sparkles}>
-                <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 mb-3 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                <div className="bg-raised/50 border border-line/50 rounded-xl p-4 mb-3 text-sm text-fg leading-relaxed whitespace-pre-wrap">
                   {wish.message}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">
+                  <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-raised-hover hover:bg-line-strong text-muted text-xs font-medium transition">
                     {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                   <button onClick={onRegenerate} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600/20 border border-violet-500/30 hover:bg-violet-600/30 text-violet-400 text-xs font-medium transition">
                     <RefreshCw size={13} /> Regenerate
                   </button>
-                  <button onClick={handleDownload} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">
+                  <button onClick={handleDownload} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-raised-hover hover:bg-line-strong text-muted text-xs font-medium transition">
                     <Download size={13} /> Download
                   </button>
                 </div>
@@ -298,19 +309,19 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
                 <InfoItem icon={Clock} label="Sent Time" value={wish.sent_at ? formatDateTime(wish.sent_at) : '–'} />
               </div>
               {loadingLogs && (
-                <div className="flex items-center gap-2 text-slate-500 text-xs py-2">
+                <div className="flex items-center gap-2 text-subtle text-xs py-2">
                   <Loader2 size={14} className="animate-spin" /> Loading delivery logs...
                 </div>
               )}
               {logs && logs.email_logs?.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-slate-400 uppercase">Delivery Timeline</div>
+                  <div className="text-xs font-medium text-muted uppercase">Delivery Timeline</div>
                   {logs.email_logs.map((log, i) => (
                     <div key={i} className="flex items-start gap-3 text-xs">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
                       <div className="flex-1">
-                        <div className="text-slate-300">{log.subject}</div>
-                        <div className="text-slate-500">{log.date} · {log.status}</div>
+                        <div className="text-muted">{log.subject}</div>
+                        <div className="text-subtle">{log.date} · {log.status}</div>
                       </div>
                     </div>
                   ))}
@@ -326,12 +337,12 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
 
 function Section({ title, icon: Icon, children }) {
   return (
-    <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-4">
+    <div className="bg-raised/30 border border-line/40 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center">
-          <Icon size={14} className="text-slate-400" />
+        <div className="w-7 h-7 rounded-lg bg-raised-hover/50 flex items-center justify-center">
+          <Icon size={14} className="text-muted" />
         </div>
-        <h4 className="text-sm font-semibold text-slate-200">{title}</h4>
+        <h4 className="text-sm font-semibold text-fg">{title}</h4>
       </div>
       {children}
     </div>
@@ -341,10 +352,10 @@ function Section({ title, icon: Icon, children }) {
 function InfoItem({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-2.5">
-      <Icon size={13} className="text-slate-500 mt-0.5 flex-shrink-0" />
+      <Icon size={13} className="text-subtle mt-0.5 flex-shrink-0" />
       <div className="min-w-0">
-        <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide mb-0.5">{label}</div>
-        <div className="text-xs text-slate-300 truncate">{value || '–'}</div>
+        <div className="text-[10px] text-subtle uppercase font-semibold tracking-wide mb-0.5">{label}</div>
+        <div className="text-xs text-muted truncate">{value || '–'}</div>
       </div>
     </div>
   );
@@ -363,7 +374,7 @@ const DEFAULT_FORM = {
   contact: '', date: '', time: '09:00', occasion: 'Birthday', template: 'Birthday - Friendly',
   timezone: 'Asia/Kolkata', reminder_minutes: 15, email_subject: '', message: '',
   language: 'en', tone: 'Friendly', notification_type: 'Email', is_ai_generated: true,
-  status: 'Scheduled', greeting_card: '',
+  status: 'Pending', greeting_card: '',
 };
 
 function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
@@ -408,7 +419,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
         tone: wish.tone || 'Friendly',
         notification_type: wish.notification_type || 'Email',
         is_ai_generated: wish.is_ai_generated ?? true,
-        status: isDuplicate ? 'Scheduled' : (wish.status || 'Scheduled'),
+        status: isDuplicate ? 'Pending' : (wish.status || 'Pending'),
         greeting_card: wish.greeting_card || '',
       });
       if (wish.contact) {
@@ -491,23 +502,23 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
   return (
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+        className="fixed inset-0 z-[60] glass-overlay flex items-center justify-center p-4"
         onClick={handleClose}>
         <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }} onClick={e => e.stopPropagation()}
-          className="bg-[#0F172A] border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+          className="bg-inset border border-line rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-line/50 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
                 {isEdit ? <Edit2 className="text-blue-400" size={17} /> : <Plus className="text-blue-400" size={17} />}
               </div>
               <div>
-                <h3 className="text-slate-100 font-bold">{isEdit ? 'Edit Schedule' : isDuplicate ? 'Duplicate Schedule' : 'New Schedule'}</h3>
-                <p className="text-slate-500 text-xs">{isEdit ? `Editing wish for ${selectedContact?.name || '...'}` : 'Schedule a new wish'}</p>
+                <h3 className="text-fg font-bold">{isEdit ? 'Edit Schedule' : isDuplicate ? 'Duplicate Schedule' : 'New Schedule'}</h3>
+                <p className="text-subtle text-xs">{isEdit ? `Editing wish for ${selectedContact?.name || '...'}` : 'Schedule a new wish'}</p>
               </div>
             </div>
-            <button onClick={handleClose} className="w-9 h-9 rounded-xl hover:bg-slate-700 flex items-center justify-center text-slate-400 transition">
+            <button onClick={handleClose} className="w-9 h-9 rounded-xl hover:bg-raised-hover flex items-center justify-center text-muted transition">
               <X size={18} />
             </button>
           </div>
@@ -515,9 +526,9 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
           <div className="overflow-y-auto flex-1 p-6 space-y-5">
             {/* Contact Selector */}
             <div className="relative">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Contact *</label>
+              <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Contact *</label>
               <div className="relative">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
                 <input value={contactSearch}
                   onChange={e => { setContactSearch(e.target.value); setContactDropdown(true); if (selectedContact && e.target.value !== selectedContact.name) { setSelectedContact(null); handleFormChange('contact', ''); } }}
                   onFocus={() => setContactDropdown(true)}
@@ -527,16 +538,16 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
               <AnimatePresence>
                 {contactDropdown && filteredContacts.length > 0 && (
                   <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
-                    className="absolute z-50 left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-[#0F172A] border border-slate-700 rounded-xl shadow-2xl">
+                    className="absolute z-50 left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-inset border border-line rounded-xl shadow-2xl">
                     {filteredContacts.slice(0, 8).map(c => (
                       <button key={c.id} type="button" onClick={() => handleSelectContact(c)}
-                        className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-slate-800 transition">
+                        className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-raised transition">
                         <Avatar name={c.name} size="sm" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-slate-100 truncate">{c.name}</div>
-                          <div className="text-xs text-slate-400 truncate">{c.email}</div>
+                          <div className="text-sm font-medium text-fg truncate">{c.name}</div>
+                          <div className="text-xs text-muted truncate">{c.email}</div>
                         </div>
-                        {c.relationship && <span className="text-xs px-2 py-0.5 bg-slate-700 rounded-full text-slate-400">{c.relationship}</span>}
+                        {c.relationship && <span className="text-xs px-2 py-0.5 bg-raised-hover rounded-full text-muted">{c.relationship}</span>}
                       </button>
                     ))}
                   </motion.div>
@@ -546,9 +557,9 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
                 <div className="mt-2 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 flex items-center gap-3">
                   <Avatar name={selectedContact.name} size="sm" />
                   <div className="flex-1 grid grid-cols-3 gap-x-3 text-xs">
-                    <span className="text-slate-400"><span className="text-slate-500">Name: </span>{selectedContact.name}</span>
-                    <span className="text-slate-400 truncate"><span className="text-slate-500">Email: </span>{selectedContact.email}</span>
-                    <span className="text-slate-400"><span className="text-slate-500">Rel: </span>{selectedContact.relationship || '–'}</span>
+                    <span className="text-muted"><span className="text-subtle">Name: </span>{selectedContact.name}</span>
+                    <span className="text-muted truncate"><span className="text-subtle">Email: </span>{selectedContact.email}</span>
+                    <span className="text-muted"><span className="text-subtle">Rel: </span>{selectedContact.relationship || '–'}</span>
                   </div>
                 </div>
               )}
@@ -557,7 +568,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
             {/* Row 1 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Occasion</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Occasion</label>
                 <select value={form.occasion} onChange={e => handleFormChange('occasion', e.target.value)} className="input w-full">
                   {['Birthday','Anniversary','Festival','Holiday','Custom'].map(o => (
                     <option key={o} value={o}>{OCCASION_ICONS[o]} {o}</option>
@@ -565,7 +576,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Template</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Template</label>
                 <select value={form.template} onChange={e => handleFormChange('template', e.target.value)} className="input w-full">
                   {['Birthday - Friendly','Birthday - Fun','Anniversary - Romantic','Festival - Joyful','Generic - Warm'].map(t => (
                     <option key={t} value={t}>{t}</option>
@@ -577,12 +588,12 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
             {/* Row 2 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Date *</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Date *</label>
                 <input type="date" value={form.date} onChange={e => handleFormChange('date', e.target.value)}
                   min={new Date().toISOString().split('T')[0]} className="input w-full" required />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Time</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Time</label>
                 <input type="time" value={form.time} onChange={e => handleFormChange('time', e.target.value)} className="input w-full" />
               </div>
             </div>
@@ -590,13 +601,13 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
             {/* Row 3 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Tone</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Tone</label>
                 <select value={form.tone} onChange={e => handleFormChange('tone', e.target.value)} className="input w-full">
                   {['Friendly','Warm','Formal','Fun','Romantic','Inspirational'].map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Language</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Language</label>
                 <select value={form.language} onChange={e => handleFormChange('language', e.target.value)} className="input w-full">
                   {[['en','English'],['hi','Hindi'],['es','Spanish'],['fr','French'],['de','German'],['ta','Tamil'],['te','Telugu']].map(([v,l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -608,13 +619,13 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
             {/* Row 4 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Timezone</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Timezone</label>
                 <select value={form.timezone} onChange={e => handleFormChange('timezone', e.target.value)} className="input w-full">
                   {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Reminder</label>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Reminder</label>
                 <select value={form.reminder_minutes} onChange={e => handleFormChange('reminder_minutes', parseInt(e.target.value))} className="input w-full">
                   <option value={15}>15 mins before</option>
                   <option value={30}>30 mins before</option>
@@ -626,13 +637,13 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
 
             {/* Notification Type */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Notification Type</label>
+              <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Notification Type</label>
               <div className="flex gap-2">
                 {[['Email','📧'],['SMS','📱'],['Push','🔔']].map(([type, icon]) => (
                   <button key={type} type="button" onClick={() => handleFormChange('notification_type', type)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition ${form.notification_type === type ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-slate-600 text-slate-400 hover:border-slate-500'}`}>
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition ${form.notification_type === type ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-line-strong text-muted hover:border-line-strong'}`}>
                     {icon} {type}
-                    {type === 'Push' && <span className="text-[9px] bg-slate-700 text-slate-500 px-1 rounded">Soon</span>}
+                    {type === 'Push' && <span className="text-[9px] bg-raised-hover text-subtle px-1 rounded">Soon</span>}
                   </button>
                 ))}
               </div>
@@ -640,14 +651,14 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
 
             {/* Email Subject */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Email Subject</label>
+              <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Email Subject</label>
               <input type="text" value={form.email_subject} onChange={e => handleFormChange('email_subject', e.target.value)}
                 placeholder={`Happy ${form.occasion} — auto-generated if blank`} className="input w-full" />
             </div>
 
             {/* Greeting Card Selection */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Attached Greeting Card</label>
+              <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Attached Greeting Card</label>
               <select
                 value={form.greeting_card}
                 onChange={e => handleFormChange('greeting_card', e.target.value)}
@@ -660,7 +671,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-500 mt-1">
+              <p className="text-[10px] text-subtle mt-1">
                 Attach one of your published greeting cards. It will be sent as an email attachment & embedded inline.
               </p>
             </div>
@@ -668,14 +679,14 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
             {/* Message Mode Toggle */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Greeting Message</label>
+                <label className="text-xs font-semibold text-muted uppercase tracking-wide">Greeting Message</label>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => handleFormChange('is_ai_generated', true)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${form.is_ai_generated ? 'bg-violet-600/20 border-violet-500 text-violet-400' : 'border-slate-600 text-slate-500 hover:border-slate-500'}`}>
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${form.is_ai_generated ? 'bg-violet-600/20 border-violet-500 text-violet-400' : 'border-line-strong text-subtle hover:border-line-strong'}`}>
                     <Sparkles size={12} /> AI Mode
                   </button>
                   <button type="button" onClick={() => handleFormChange('is_ai_generated', false)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${!form.is_ai_generated ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'border-slate-600 text-slate-500 hover:border-slate-500'}`}>
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${!form.is_ai_generated ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'border-line-strong text-subtle hover:border-line-strong'}`}>
                     <Edit2 size={12} /> Manual
                   </button>
                 </div>
@@ -684,7 +695,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
                 <textarea value={form.message} onChange={e => handleFormChange('message', e.target.value)}
                   className="input w-full h-32 resize-none"
                   placeholder={form.is_ai_generated ? 'AI greeting — click Regenerate to generate one…' : 'Type your custom message here…'} />
-                <div className="absolute bottom-3 right-3 text-[10px] text-slate-500">{charCount} chars</div>
+                <div className="absolute bottom-3 right-3 text-[10px] text-subtle">{charCount} chars</div>
               </div>
               {form.is_ai_generated && (
                 <button type="button" onClick={handleRegenerate} disabled={generating}
@@ -697,14 +708,14 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-slate-700/50 flex-shrink-0 flex items-center justify-between">
+          <div className="px-6 py-4 border-t border-line/50 flex-shrink-0 flex items-center justify-between">
             {unsaved && (
               <div className="flex items-center gap-1.5 text-amber-400 text-xs">
                 <AlertCircle size={13} /> Unsaved changes
               </div>
             )}
             <div className="flex gap-3 ml-auto">
-              <button onClick={handleClose} className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 transition text-sm font-medium">
+              <button onClick={handleClose} className="px-5 py-2.5 rounded-xl border border-line-strong text-muted hover:bg-raised-hover transition text-sm font-medium">
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving}
@@ -748,7 +759,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-      className="group bg-[#1E293B] rounded-2xl border border-slate-700/40 hover:border-slate-600/60 hover:shadow-lg hover:shadow-slate-900/40 p-5 transition-all duration-200">
+      className="group bg-surface/80 backdrop-blur-md rounded-2xl border border-line hover:border-line-strong hover:shadow-xl p-5 transition-all duration-200">
       <div className="flex items-start gap-4">
         <Avatar name={contact.name} />
 
@@ -756,7 +767,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-100">{contact.name || 'Unknown'}</span>
+                <span className="font-semibold text-fg">{contact.name || 'Unknown'}</span>
                 <StatusBadge status={wish.status} />
                 {wish.is_ai_generated && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400">
@@ -764,8 +775,8 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
                   </span>
                 )}
               </div>
-              <div className="text-sm text-slate-400 mt-0.5 truncate">
-                {contact.email} {contact.phone && <span className="text-slate-500">· {contact.phone}</span>}
+              <div className="text-sm text-muted mt-0.5 truncate">
+                {contact.email} {contact.phone && <span className="text-subtle">· {contact.phone}</span>}
               </div>
             </div>
             
@@ -777,14 +788,14 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
               
               <div className="relative" ref={menuRef}>
                 <button onClick={() => setMenuOpen(!menuOpen)}
-                  className="w-7 h-7 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center text-slate-400 transition">
+                  className="w-7 h-7 rounded-lg bg-raised-hover/50 hover:bg-line-strong flex items-center justify-center text-muted transition">
                   <MoreHorizontal size={14} />
                 </button>
                 <AnimatePresence>
                   {menuOpen && (
                     <motion.div initial={{ opacity: 0, scale: 0.95, y: -5 }} animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                      className="absolute right-0 top-9 z-30 bg-[#0F172A] border border-slate-700 rounded-xl shadow-2xl w-40 py-1 overflow-hidden">
+                      className="absolute right-0 top-9 z-30 bg-inset border border-line rounded-xl shadow-2xl w-40 py-1 overflow-hidden">
                       {canCancel && (
                         <MenuBtn icon={Ban} label="Cancel" color="text-amber-400" loading={loading === 'cancel'}
                           onClick={() => doAction('cancel', async () => { await schedulesAPI.cancel(wish.id); onRefresh(); toast.success('Wish cancelled.'); })} />
@@ -793,7 +804,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
                         <MenuBtn icon={Play} label="Resume" color="text-emerald-400" loading={loading === 'resume'}
                           onClick={() => doAction('resume', async () => { await schedulesAPI.resume(wish.id); onRefresh(); toast.success('Wish resumed!'); })} />
                       )}
-                      <div className="h-px bg-slate-700/50 my-1" />
+                      <div className="h-px bg-raised-hover/50 my-1" />
                       <MenuBtn icon={Trash2} label="Delete" color="text-rose-400"
                         onClick={() => { setMenuOpen(false); onDelete(wish); }} />
                     </motion.div>
@@ -803,7 +814,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-subtle">
             <span className="flex items-center gap-1.5">
               {OCCASION_ICONS[wish.occasion] || '✨'} {wish.occasion}
             </span>
@@ -824,7 +835,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
           </div>
 
           {wish.message && (
-            <div className="mt-3 text-xs text-slate-500 line-clamp-2 leading-relaxed bg-slate-800/50 rounded-lg px-3 py-2">
+            <div className="mt-3 text-xs text-subtle line-clamp-2 leading-relaxed bg-raised/50 rounded-lg px-3 py-2">
               "{wish.message.slice(0, 120)}{wish.message.length > 120 ? '…' : ''}"
             </div>
           )}
@@ -837,7 +848,7 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
 function ActionBtn({ icon: Icon, label, onClick }) {
   return (
     <button title={label} onClick={onClick}
-      className="w-7 h-7 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center text-slate-400 hover:text-slate-200 transition">
+      className="w-7 h-7 rounded-lg bg-raised-hover/50 hover:bg-line-strong flex items-center justify-center text-muted hover:text-fg transition">
       <Icon size={13} />
     </button>
   );
@@ -846,7 +857,7 @@ function ActionBtn({ icon: Icon, label, onClick }) {
 function MenuBtn({ icon: Icon, label, color, onClick, loading }) {
   return (
     <button onClick={onClick} disabled={loading}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-slate-800 transition ${color}`}>
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-raised transition ${color}`}>
       {loading ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
       {label}
     </button>
@@ -863,15 +874,15 @@ function DashboardBar({ stats }) {
     { label: 'Scheduled', value: stats.scheduled, icon: Clock, color: 'text-sky-400' },
     { label: 'Sent', value: stats.sent, icon: CheckCircle2, color: 'text-emerald-400' },
     { label: 'Failed', value: stats.failed, icon: AlertCircle, color: 'text-rose-400' },
-    { label: 'Cancelled', value: stats.cancelled, icon: Ban, color: 'text-slate-400' },
+    { label: 'Cancelled', value: stats.cancelled, icon: Ban, color: 'text-muted' },
   ];
   return (
     <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
       {items.map(({ label, value, icon: Icon, color }) => (
-        <div key={label} className="bg-[#1E293B] border border-slate-700/40 rounded-xl p-3 text-center">
+        <div key={label} className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-3.5 text-center shadow-sm hover:border-line-strong transition-all">
           <Icon size={18} className={`${color} mx-auto mb-1`} />
           <div className={`text-xl font-bold ${color}`}>{value ?? 0}</div>
-          <div className="text-xs text-slate-500">{label}</div>
+          <div className="text-xs text-subtle">{label}</div>
         </div>
       ))}
     </div>
@@ -907,20 +918,20 @@ function CalendarView({ schedules }) {
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   return (
-    <div className="bg-[#1E293B] border border-slate-700/40 rounded-2xl p-5">
+    <div className="bg-surface/80 backdrop-blur-md border border-line rounded-3xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="w-8 h-8 rounded-lg hover:bg-slate-700 flex items-center justify-center text-slate-400 transition">
+        <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="w-8 h-8 rounded-lg hover:bg-raised-hover flex items-center justify-center text-muted transition">
           <ChevronDown className="rotate-90" size={16} />
         </button>
-        <h3 className="font-semibold text-slate-200">{monthNames[month]} {year}</h3>
-        <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="w-8 h-8 rounded-lg hover:bg-slate-700 flex items-center justify-center text-slate-400 transition">
+        <h3 className="font-semibold text-fg">{monthNames[month]} {year}</h3>
+        <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="w-8 h-8 rounded-lg hover:bg-raised-hover flex items-center justify-center text-muted transition">
           <ChevronDown className="-rotate-90" size={16} />
         </button>
       </div>
 
       <div className="grid grid-cols-7 mb-2">
         {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-          <div key={d} className="text-center text-[11px] text-slate-500 font-semibold py-1">{d}</div>
+          <div key={d} className="text-center text-[11px] text-subtle font-semibold py-1">{d}</div>
         ))}
       </div>
 
@@ -933,7 +944,7 @@ function CalendarView({ schedules }) {
           const isSelected = selected === dateStr;
           return (
             <button key={day} onClick={() => setSelected(isSelected ? null : dateStr)}
-              className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-xs font-medium transition ${isToday ? 'bg-blue-600 text-white' : isSelected ? 'bg-slate-700 text-slate-100' : 'hover:bg-slate-700/60 text-slate-400'}`}>
+              className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-xs font-medium transition ${isToday ? 'bg-blue-600 text-white' : isSelected ? 'bg-raised-hover text-fg' : 'hover:bg-raised-hover/60 text-muted'}`}>
               {day}
               {daySchedules.length > 0 && (
                 <div className="flex gap-0.5 absolute bottom-0.5">
@@ -948,14 +959,14 @@ function CalendarView({ schedules }) {
       </div>
 
       {selected && scheduleMap[selected] && (
-        <div className="mt-4 border-t border-slate-700/50 pt-4">
-          <div className="text-xs font-semibold text-slate-400 mb-2">{selected} — {scheduleMap[selected].length} wish(es)</div>
+        <div className="mt-4 border-t border-line/50 pt-4">
+          <div className="text-xs font-semibold text-muted mb-2">{selected} — {scheduleMap[selected].length} wish(es)</div>
           <div className="space-y-2">
             {scheduleMap[selected].map(w => (
               <div key={w.id} className="flex items-center gap-2 text-xs">
                 <div className={`w-2 h-2 rounded-full ${STATUS_CONFIG[w.status]?.dot}`} />
-                <span className="text-slate-300">{w.contact?.name}</span>
-                <span className="text-slate-500">— {w.occasion}</span>
+                <span className="text-muted">{w.contact?.name}</span>
+                <span className="text-subtle">— {w.occasion}</span>
                 <StatusBadge status={w.status} />
               </div>
             ))}
@@ -972,12 +983,13 @@ const ScheduleWishPage = () => {
   const { contacts } = useData();
 
   // State
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState('list'); // list | calendar
   const [schedules, setSchedules] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get('search') || '');
   const [filters, setFilters] = useState({ status: '', occasion: '', sort: 'newest', is_ai_generated: '' });
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -986,6 +998,15 @@ const ScheduleWishPage = () => {
   const [editWish, setEditWish] = useState(null);
   const [deleteWish, setDeleteWish] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Sync search URL query parameter
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q !== null && q !== search) {
+      setSearch(q);
+      setDebouncedSearch(q);
+    }
+  }, [searchParams]);
 
   // Fetch
   const fetchSchedules = useCallback(async () => {
@@ -997,16 +1018,56 @@ const ScheduleWishPage = () => {
         schedulesAPI.getAll(params),
         schedulesAPI.getDashboard(),
       ]);
-      setSchedules(schedulesRes.data.results || schedulesRes.data || []);
+      const loadedSchedules = schedulesRes.data.results || schedulesRes.data || [];
+      setSchedules(loadedSchedules);
       setStats(statsRes.data);
+
+      // Auto-open target schedule if id query param exists
+      const targetId = searchParams.get('id');
+      if (targetId && loadedSchedules.length > 0) {
+        const found = loadedSchedules.find(s => String(s.id) === String(targetId));
+        if (found) {
+          setViewWish(found);
+        }
+      }
     } catch {
       toast.error('Failed to load schedules.');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filters]);
+  }, [debouncedSearch, filters, searchParams]);
 
   useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
+
+  // Handle prefill parameters when navigating from Calendar
+  useEffect(() => {
+    const isNew = searchParams.get('new') === 'true';
+    const prefillContactId = searchParams.get('contactId') || searchParams.get('contact');
+    const prefillRecipient = searchParams.get('recipient');
+    const prefillOccasion = searchParams.get('occasion');
+    const prefillDate = searchParams.get('date');
+
+    if (isNew || prefillContactId || prefillRecipient || prefillDate) {
+      let matchedContact = null;
+      if (prefillContactId && Array.isArray(contacts)) {
+        matchedContact = contacts.find(c => String(c.id) === String(prefillContactId));
+      } else if (prefillRecipient && Array.isArray(contacts)) {
+        matchedContact = contacts.find(c => c.name?.toLowerCase() === prefillRecipient.toLowerCase());
+      }
+
+      const initialWish = {
+        contact: matchedContact || (prefillContactId ? { id: prefillContactId, name: prefillRecipient || '' } : (prefillRecipient ? { name: prefillRecipient } : null)),
+        occasion: prefillOccasion || 'Birthday',
+        date: prefillDate || '',
+        time: '09:00',
+        timezone: 'Asia/Kolkata',
+        status: 'Pending',
+        is_ai_generated: true,
+      };
+      setEditWish(initialWish);
+      setShowCreateModal(true);
+    }
+  }, [searchParams, contacts]);
 
   // Debounce search
   useEffect(() => {
@@ -1055,6 +1116,36 @@ const ScheduleWishPage = () => {
     }
   };
 
+  const exportSchedulesCSV = () => {
+    if (!schedules || !schedules.length) {
+      toast.error('No scheduled wishes to export');
+      return;
+    }
+    const csv = [
+      ['Contact Name', 'Occasion', 'Date', 'Time', 'Channel', 'Status', 'Message'],
+      ...schedules.map(s => [
+        s.contact?.name || '',
+        s.occasion || '',
+        s.date || '',
+        s.time || '',
+        s.notification_type || 'Email',
+        s.status || 'Pending',
+        s.message || ''
+      ])
+    ].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scheduled_wishes.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Exported scheduled_wishes.csv');
+  };
+
   const activeFiltersCount = Object.values(filters).filter(v => v && v !== 'newest').length;
 
   return (
@@ -1062,23 +1153,32 @@ const ScheduleWishPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-100">Schedule Wishes</h1>
-          <p className="text-slate-400 text-sm mt-1">Enterprise-grade automated wish management</p>
+          <h1 className="text-3xl font-bold text-fg">Schedule Wishes</h1>
+          <p className="text-muted text-sm mt-1">Enterprise-grade automated wish management</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)}
-          className="btn-primary flex items-center gap-2 px-5 py-2.5 self-start sm:self-auto">
-          <Plus size={17} /> New Schedule
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={exportSchedulesCSV}
+            className="btn-secondary flex items-center gap-1.5 px-4 py-2.5 text-sm"
+            title="Export Scheduled Wishes to CSV"
+          >
+            <Download size={15} /> Export CSV
+          </button>
+          <button onClick={() => setShowCreateModal(true)}
+            className="btn-primary flex items-center gap-2 px-5 py-2.5">
+            <Plus size={17} /> New Schedule
+          </button>
+        </div>
       </div>
 
       {/* Dashboard Stats */}
       <DashboardBar stats={stats} />
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 bg-[#1E293B] border border-slate-700/40 rounded-xl p-1 w-fit">
+      <div className="flex items-center gap-1 bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-1 shadow-sm w-fit">
         {[['list', List, 'List'], ['calendar', CalendarDays, 'Calendar']].map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${tab === key ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${tab === key ? 'bg-blue-600 text-white shadow' : 'text-muted hover:text-fg'}`}>
             <Icon size={15} /> {label}
           </button>
         ))}
@@ -1091,19 +1191,19 @@ const ScheduleWishPage = () => {
           {/* Search & Filters Toolbar */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Search by name, email, phone, occasion, message…"
                 className="input pl-9 w-full" />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-subtle hover:text-muted">
                   <X size={14} />
                 </button>
               )}
             </div>
             <div className="relative">
               <button onClick={() => setFiltersOpen(!filtersOpen)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition ${filtersOpen || activeFiltersCount > 0 ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-slate-600 text-slate-400 hover:border-slate-500 bg-[#1E293B]'}`}>
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition ${filtersOpen || activeFiltersCount > 0 ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-line-strong text-muted hover:border-line-strong bg-surface'}`}>
                 <Filter size={15} />
                 Filters
                 {activeFiltersCount > 0 && (
@@ -1115,32 +1215,32 @@ const ScheduleWishPage = () => {
               <AnimatePresence>
                 {filtersOpen && (
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                    className="absolute right-0 top-12 z-30 bg-[#0F172A] border border-slate-700 rounded-2xl shadow-2xl p-4 w-80 space-y-4">
+                    className="absolute right-0 top-12 z-30 bg-inset border border-line rounded-2xl shadow-2xl p-4 w-80 space-y-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-semibold text-slate-200">Filters</span>
+                      <span className="text-sm font-semibold text-fg">Filters</span>
                       <button onClick={() => { setFilters({ status: '', occasion: '', sort: 'newest', is_ai_generated: '' }); setFiltersOpen(false); }}
-                        className="text-xs text-slate-500 hover:text-slate-300 transition">Clear all</button>
+                        className="text-xs text-subtle hover:text-muted transition">Clear all</button>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Status</label>
+                      <label className="text-xs font-semibold text-subtle uppercase mb-1.5 block">Status</label>
                       <div className="flex flex-wrap gap-2">
                         {['', ...Object.keys(STATUS_CONFIG)].map(s => (
                           <button key={s} onClick={() => setFilters(f => ({ ...f, status: s }))}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${filters.status === s ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-slate-700 text-slate-500 hover:border-slate-500'}`}>
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${filters.status === s ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-line text-subtle hover:border-line-strong'}`}>
                             {s || 'All'}
                           </button>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Occasion</label>
+                      <label className="text-xs font-semibold text-subtle uppercase mb-1.5 block">Occasion</label>
                       <select value={filters.occasion} onChange={e => setFilters(f => ({ ...f, occasion: e.target.value }))} className="input w-full text-sm">
                         <option value="">All Occasions</option>
                         {['Birthday','Anniversary','Festival','Holiday','Custom'].map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Sort</label>
+                      <label className="text-xs font-semibold text-subtle uppercase mb-1.5 block">Sort</label>
                       <select value={filters.sort} onChange={e => setFilters(f => ({ ...f, sort: e.target.value }))} className="input w-full text-sm">
                         <option value="newest">Newest First</option>
                         <option value="oldest">Oldest First</option>
@@ -1150,11 +1250,11 @@ const ScheduleWishPage = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Message Type</label>
+                      <label className="text-xs font-semibold text-subtle uppercase mb-1.5 block">Message Type</label>
                       <div className="flex gap-2">
                         {[['', 'All'], ['true', 'AI Generated'], ['false', 'Manual']].map(([v, l]) => (
                           <button key={v} onClick={() => setFilters(f => ({ ...f, is_ai_generated: v }))}
-                            className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition ${filters.is_ai_generated === v ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-slate-700 text-slate-500'}`}>
+                            className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition ${filters.is_ai_generated === v ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-line text-subtle'}`}>
                             {l}
                           </button>
                         ))}
@@ -1167,15 +1267,15 @@ const ScheduleWishPage = () => {
               </AnimatePresence>
             </div>
 
-            <button onClick={fetchSchedules} className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-200 transition bg-[#1E293B]">
+            <button onClick={fetchSchedules} className="w-10 h-10 flex items-center justify-center rounded-xl border border-line-strong text-muted hover:border-line-strong hover:text-fg transition bg-surface">
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
 
           {/* Results count */}
           {!loading && (
-            <div className="text-sm text-slate-500">
-              Showing <span className="text-slate-300 font-medium">{schedules.length}</span> schedule{schedules.length !== 1 ? 's' : ''}
+            <div className="text-sm text-subtle">
+              Showing <span className="text-muted font-medium">{schedules.length}</span> schedule{schedules.length !== 1 ? 's' : ''}
               {(search || activeFiltersCount > 0) && ' (filtered)'}
             </div>
           )}

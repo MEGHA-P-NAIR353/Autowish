@@ -4,9 +4,9 @@ import { cardAIAPI } from '../../services/greetingCardsAPI';
 import toast from 'react-hot-toast';
 
 const INPUT_CLS =
-  'w-full bg-[#111827] text-[#F8FAFC] placeholder-[#94A3B8] text-xs rounded-xl px-3 py-2.5 border border-[#334155] outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all';
+  'w-full bg-white dark:bg-slate-900 text-black dark:text-white placeholder:text-slate-400 text-xs rounded-xl px-3 py-2.5 border border-slate-300 dark:border-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all';
 const LABEL_CLS =
-  'text-[10px] text-[#CBD5E1] uppercase tracking-wider font-semibold mb-1.5 block';
+  'text-[10px] text-black dark:text-slate-300 uppercase tracking-wider font-bold mb-1.5 block';
 const SELECT_CLS =
   `${INPUT_CLS} cursor-pointer appearance-none`;
 
@@ -271,7 +271,7 @@ export default function AIMessagePanel({
             className={SELECT_CLS}
           >
             {TONES.map((t) => (
-              <option key={t} value={t} className="bg-[#111827] text-[#F8FAFC]">{t}</option>
+              <option key={t} value={t} className="bg-inset text-fg">{t}</option>
             ))}
           </select>
         </div>
@@ -284,7 +284,7 @@ export default function AIMessagePanel({
             className={SELECT_CLS}
           >
             {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code} className="bg-[#111827] text-[#F8FAFC]">{l.name}</option>
+              <option key={l.code} value={l.code} className="bg-inset text-fg">{l.name}</option>
             ))}
           </select>
         </div>
@@ -300,7 +300,7 @@ export default function AIMessagePanel({
           className={SELECT_CLS}
         >
           {RELATIONSHIPS.map((r) => (
-            <option key={r} value={r} className="bg-[#111827] text-[#F8FAFC]">{r}</option>
+            <option key={r} value={r} className="bg-inset text-fg">{r}</option>
           ))}
         </select>
       </div>
@@ -373,8 +373,8 @@ export default function AIMessagePanel({
               disabled={loading}
               className={`py-2 px-2.5 rounded-xl border text-[10px] font-semibold text-left flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 activeModifier === mod.val
-                  ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
-                  : 'bg-[#111827] border-[#334155] text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#CBD5E1] hover:border-[#475569]'
+                  ? 'bg-indigo-50 dark:bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-bold'
+                  : 'bg-inset border-line text-black dark:text-slate-300 hover:bg-surface hover:text-black dark:hover:text-white hover:border-line-strong'
               }`}
             >
               {loading && activeModifier === mod.val ? (
@@ -390,14 +390,14 @@ export default function AIMessagePanel({
       {(editableMessage || loading) && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">AI Generated Message</p>
+            <p className="text-[10px] text-black dark:text-slate-300 uppercase tracking-wider font-bold">AI Generated Message</p>
             <div className="flex items-center gap-1.5">
               {/* Undo / Redo / Restore / Reset */}
               <button
                 type="button"
                 onClick={handleUndo}
                 disabled={historyIndex <= 0 || loading}
-                className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-1.5 rounded-lg bg-raised border border-line text-black dark:text-slate-400 hover:text-black dark:hover:text-fg hover:border-line-strong disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 title="Undo"
               >
                 <Undo2 size={12} />
@@ -406,7 +406,7 @@ export default function AIMessagePanel({
                 type="button"
                 onClick={handleRedo}
                 disabled={historyIndex >= history.length - 1 || loading}
-                className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-1.5 rounded-lg bg-raised border border-line text-black dark:text-slate-400 hover:text-black dark:hover:text-fg hover:border-line-strong disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 title="Redo"
               >
                 <Redo2 size={12} />
@@ -415,7 +415,7 @@ export default function AIMessagePanel({
                 type="button"
                 onClick={handleRestoreAI}
                 disabled={!aiVersion || loading}
-                className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-1.5 rounded-lg bg-raised border border-line text-black dark:text-slate-400 hover:text-black dark:hover:text-fg hover:border-line-strong disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 title="Restore AI Version"
               >
                 <RotateCcw size={12} />
@@ -424,7 +424,7 @@ export default function AIMessagePanel({
                 type="button"
                 onClick={handleReset}
                 disabled={loading}
-                className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-1.5 rounded-lg bg-raised border border-line text-black dark:text-slate-400 hover:text-black dark:hover:text-fg hover:border-line-strong disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 title="Reset"
               >
                 <RefreshCw size={12} />
@@ -446,10 +446,10 @@ export default function AIMessagePanel({
           {/* Character/Word Count & Warning */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className={`text-[10px] font-semibold ${isOverCharLimit ? 'text-rose-400' : isWarnCharLimit ? 'text-amber-400' : 'text-slate-500'}`}>
+              <span className={`text-[10px] font-bold ${isOverCharLimit ? 'text-rose-600 dark:text-rose-400' : isWarnCharLimit ? 'text-amber-600 dark:text-amber-400' : 'text-black dark:text-slate-400'}`}>
                 {charCount}/{MAX_CHARS} chars
               </span>
-              <span className={`text-[10px] font-semibold ${isOverWordLimit ? 'text-rose-400' : isWarnWordLimit ? 'text-amber-400' : 'text-slate-500'}`}>
+              <span className={`text-[10px] font-bold ${isOverWordLimit ? 'text-rose-600 dark:text-rose-400' : isWarnWordLimit ? 'text-amber-600 dark:text-amber-400' : 'text-black dark:text-slate-400'}`}>
                 {wordCount}/{MAX_WORDS} words
               </span>
             </div>

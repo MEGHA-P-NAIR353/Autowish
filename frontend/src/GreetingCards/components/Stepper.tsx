@@ -8,7 +8,7 @@ interface StepperProps {
 
 export default function Stepper({ currentStep, steps }: StepperProps) {
   return (
-    <div className="w-full flex items-center justify-between py-4 px-6 bg-[#0B0F19]/40 backdrop-blur-md border border-slate-800/80 rounded-2xl">
+    <div className="w-full flex items-center justify-between py-4 px-6 bg-inset/40 backdrop-blur-md border border-line rounded-2xl">
       {steps.map((step, index) => {
         const stepNum = index + 1;
         const isCompleted = currentStep > stepNum;
@@ -23,14 +23,14 @@ export default function Stepper({ currentStep, steps }: StepperProps) {
                     ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
                     : isActive
                     ? 'bg-indigo-600 text-white ring-4 ring-indigo-600/20'
-                    : 'bg-slate-800 text-slate-400 border border-slate-700/50'
+                    : 'bg-raised text-black dark:text-muted border border-line/50'
                 }`}
               >
                 {isCompleted ? <Check size={14} className="stroke-[3]" /> : stepNum}
               </div>
               <span
                 className={`text-xs font-semibold hidden md:inline transition-all duration-300 ${
-                  isActive ? 'text-white' : 'text-slate-400'
+                  isActive ? 'text-fg' : 'text-black dark:text-muted'
                 }`}
               >
                 {step}
@@ -39,7 +39,7 @@ export default function Stepper({ currentStep, steps }: StepperProps) {
             {index < steps.length - 1 && (
               <div
                 className={`flex-1 h-0.5 mx-4 rounded transition-all duration-500 ${
-                  isCompleted ? 'bg-indigo-500' : 'bg-slate-850'
+                  isCompleted ? 'bg-indigo-500' : 'bg-surface'
                 }`}
               />
             )}

@@ -199,6 +199,7 @@ const TemplatePreview = memo(function TemplatePreview({
 
   return (
     <div
+      data-card-renderer="true"
       className={`relative w-full aspect-[4/3] overflow-hidden ${rounded} ${className}`}
       style={{ ...bgStyle, fontFamily: font }}
     >

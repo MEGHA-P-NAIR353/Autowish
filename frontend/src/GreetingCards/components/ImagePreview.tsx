@@ -20,7 +20,7 @@ const ImagePreview = ({ src, alt = 'Uploaded', shape = 'round', onRemove, onReCr
   const radius = shape === 'round' ? 'rounded-full' : shape === 'free' ? 'rounded-lg' : 'rounded-xl';
   return (
     <div className='relative group inline-block'>
-      <div className={`${sizeMap[size]} ${radius} overflow-hidden border border-[#334155] shadow-lg shadow-black/30`}>
+      <div className={`${sizeMap[size]} ${radius} overflow-hidden border border-line shadow-lg shadow-black/30`}>
         <img src={src} alt={alt} className='w-full h-full object-cover' />
       </div>
       <div className='absolute inset-0 flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 bg-black/50 transition-all rounded-xl'>

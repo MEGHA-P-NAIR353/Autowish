@@ -59,6 +59,7 @@ export const authAPI = {
   refresh: (refresh) => api.post('auth/refresh/', { refresh }),
   verifyEmail: (token) => api.post('auth/verify-email/', { token }),
   forgotPassword: (email) => api.post('auth/forgot-password/', { email }),
+  verifyResetOtp: (email, otp) => api.post('auth/verify-reset-otp/', { email, otp }),
   resetPassword: (data) => api.post('auth/reset-password/', data),
   changePassword: (data) => api.post('auth/change-password/', data),
   getProfile: () => api.get('auth/profile/'),
@@ -74,6 +75,12 @@ export const authAPI = {
 export const dashboardAPI = {
   getStats: () => api.get('dashboard/stats/'),
   getRecentActivity: (params = {}) => api.get('dashboard/recent-activity/', { params }),
+};
+
+// ─── Global Search ───────────────────────────────────────────────────────────
+export const searchAPI = {
+  search: (query, params = {}, signal) =>
+    api.get('search/', { params: { q: query, ...params }, signal }),
 };
 
 // ─── Greeting Analytics ────────────────────────────────────────────────────────
@@ -106,6 +113,7 @@ export const eventsAPI = {
   update: (id, data) => api.patch(`events/${id}/`, data),
   delete: (id) => api.delete(`events/${id}/`),
   getUpcoming: () => api.get('events/upcoming/'),
+  getCalendar: (params = {}) => api.get('events/calendar/', { params }),
 };
 
 // ─── Templates ───────────────────────────────────────────────────────────────
@@ -170,6 +178,14 @@ export const aiAPI = {
 export const subscriptionAPI = {
   getPlans: () => api.get('subscriptions/plans/'),
   checkout: (data) => api.post('payments/checkout/', data),
+};
+
+export const paymentAPI = {
+  createDummy: (plan) => api.post('payments/dummy/create/', { plan }),
+  processDummy: (paymentId, outcome) => api.post('payments/dummy/process/', { payment_id: paymentId, outcome }),
+  cancelDummy: (paymentId) => api.post('payments/dummy/cancel/', { payment_id: paymentId }),
+  getPayment: (paymentId) => api.get(`payments/${paymentId}/`),
+  listPayments: () => api.get('payments/'),
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

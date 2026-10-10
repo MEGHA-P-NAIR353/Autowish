@@ -31,7 +31,7 @@ const PhotoUploader = ({ photoUrl, onUpload, onRemove }: PhotoUploaderProps) => 
         <div className='flex items-center gap-4'>
           <ImagePreview src={photoUrl} shape={shape} size='lg' onRemove={onRemove} onReCrop={triggerReCrop} />
           <div className='flex-1 space-y-2'>
-            <div className='text-[11px] text-[#94A3B8]'>Recipient photo ready.</div>
+            <div className='text-[11px] text-black dark:text-slate-400 font-medium'>Recipient photo ready.</div>
             <CropToolbar
               shape={shape}
               onShapeChange={setShape}
@@ -46,13 +46,13 @@ const PhotoUploader = ({ photoUrl, onUpload, onRemove }: PhotoUploaderProps) => 
       )}
 
       {reCropSrc && (
-        <div className='text-[10px] text-amber-400/80'>
+        <div className='text-[10px] text-amber-600 dark:text-amber-400 font-medium'>
           Re-crop opens the cropper with the current image. Use the modal's zoom, rotate & shape controls.
         </div>
       )}
 
       {!photoUrl && (
-        <div className='flex items-center gap-2 text-[10px] text-[#64748B]'>
+        <div className='flex items-center gap-2 text-[10px] text-black dark:text-slate-400 font-medium'>
           <Upload size={12} />
           Upload → crop (drag, zoom, rotate, circle/square) → auto-applied.
         </div>

@@ -29,24 +29,24 @@ const AdminRoles = () => {
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Roles & Permissions</h1>
-        <p className="text-slate-400 text-sm">System authorization levels and permission rules definition.</p>
+        <p className="text-muted text-sm">System authorization levels and permission rules definition.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {roles.map((role, idx) => (
-          <div key={idx} className="bg-slate-850 border border-slate-800 p-6 rounded-3xl space-y-4">
+          <div key={idx} className="bg-surface/80 backdrop-blur-md border border-line p-6 rounded-3xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center border border-blue-500/20">
                 <Shield className="text-blue-400" size={20} />
               </div>
-              <h3 className="text-base font-extrabold text-white">{role.name}</h3>
+              <h3 className="text-base font-extrabold text-fg">{role.name}</h3>
             </div>
             
-            <p className="text-xs text-slate-400 leading-relaxed">{role.desc}</p>
+            <p className="text-xs text-muted leading-relaxed">{role.desc}</p>
             
-            <ul className="space-y-2 pt-3 border-t border-slate-800">
+            <ul className="space-y-2 pt-3 border-t border-line">
               {role.permList.map((perm, pidx) => (
-                <li key={pidx} className="flex gap-2 items-start text-[11px] text-slate-300">
+                <li key={pidx} className="flex gap-2 items-start text-[11px] text-muted">
                   <Check size={12} className="text-blue-500 mt-0.5" />
                   <span>{perm}</span>
                 </li>

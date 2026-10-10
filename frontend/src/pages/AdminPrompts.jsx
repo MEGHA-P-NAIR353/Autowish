@@ -80,7 +80,7 @@ const AdminPrompts = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">AI Prompt Management</h1>
-          <p className="text-slate-400 text-sm">Tune system prompts, edit Gemini model templates, and set defaults.</p>
+          <p className="text-muted text-sm">Tune system prompts, edit Gemini model templates, and set defaults.</p>
         </div>
         <button
           onClick={() => {
@@ -98,13 +98,13 @@ const AdminPrompts = () => {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3.5 top-3 text-slate-500" size={18} />
+        <Search className="absolute left-3.5 top-3 text-subtle" size={18} />
         <input
           type="text"
           placeholder="Search by prompt name or context..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-slate-800/40 border border-slate-700/50 rounded-xl text-sm focus:outline-none focus:border-blue-500 text-white"
+          className="w-full pl-10 pr-4 py-2.5 bg-raised/40 border border-line/50 rounded-xl text-sm focus:outline-none focus:border-blue-500 text-fg"
         />
       </div>
 
@@ -114,15 +114,15 @@ const AdminPrompts = () => {
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></span>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-slate-500 text-sm border border-dashed border-slate-800 rounded-3xl">No prompts found.</div>
+        <div className="text-center py-12 text-subtle text-sm border border-dashed border-line rounded-3xl">No prompts found.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filtered.map(p => (
-            <div key={p.id} className="bg-slate-850 border border-slate-800 hover:border-slate-750 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+            <div key={p.id} className="bg-surface/80 backdrop-blur-md border border-line hover:border-line p-5 rounded-2xl flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-slate-200">{p.name}</h3>
+                    <h3 className="font-bold text-fg">{p.name}</h3>
                     <div className="flex gap-1.5 mt-1.5">
                       <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[9px] font-extrabold rounded uppercase">{p.occasion}</span>
                       <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[9px] font-extrabold rounded uppercase">{p.tone}</span>
@@ -138,21 +138,21 @@ const AdminPrompts = () => {
                         setTemplate(p.prompt_template);
                         setShowModal(true);
                       }}
-                      className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"
+                      className="p-1.5 bg-inset border border-line rounded-lg text-muted hover:text-fg"
                     >
                       <Edit2 size={13} />
                     </button>
                     <button
                       onClick={() => handleDelete(p.id)}
-                      className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-rose-400"
+                      className="p-1.5 bg-inset border border-line rounded-lg text-muted hover:text-rose-400"
                     >
                       <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 whitespace-pre-wrap mt-3">{p.prompt_template}</p>
+                <p className="text-xs text-muted leading-relaxed bg-inset/60 p-3 rounded-xl border border-line/80 whitespace-pre-wrap mt-3">{p.prompt_template}</p>
               </div>
-              <div className="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-800/80 pt-3">
+              <div className="flex justify-between items-center text-[10px] text-subtle border-t border-line/80 pt-3">
                 <span className="flex items-center gap-1"><CheckCircle size={10} className="text-emerald-500" /> Active System Prompt</span>
                 <span>{new Date(p.created_at).toLocaleDateString()}</span>
               </div>
@@ -163,33 +163,33 @@ const AdminPrompts = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 max-w-md w-full rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-50">
+          <div className="bg-inset border border-line max-w-md w-full rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-line pb-3">
               <h3 className="text-sm font-bold">{selectedPrompt ? 'Edit AI Prompt' : 'New AI Prompt'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white text-xs">Cancel</button>
+              <button onClick={() => setShowModal(false)} className="text-muted hover:text-fg text-xs">Cancel</button>
             </div>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-2">PROMPT NAME</label>
+                <label className="block text-xs text-muted font-semibold mb-2">PROMPT NAME</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Friendly Birthday Prompt v2"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-slate-400 font-semibold mb-2">OCCASION</label>
+                  <label className="block text-xs text-muted font-semibold mb-2">OCCASION</label>
                   <select
                     value={occasion}
                     onChange={e => setOccasion(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-white"
+                    className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-fg"
                   >
                     <option value="Birthday">Birthday</option>
                     <option value="Anniversary">Anniversary</option>
@@ -199,11 +199,11 @@ const AdminPrompts = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 font-semibold mb-2">TONE</label>
+                  <label className="block text-xs text-muted font-semibold mb-2">TONE</label>
                   <select
                     value={tone}
                     onChange={e => setTone(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-white"
+                    className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors text-fg"
                   >
                     <option value="Friendly">Friendly</option>
                     <option value="Professional">Professional</option>
@@ -215,14 +215,14 @@ const AdminPrompts = () => {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-2">PROMPT CONTEXT TEMPLATE</label>
+                <label className="block text-xs text-muted font-semibold mb-2">PROMPT CONTEXT TEMPLATE</label>
                 <textarea
                   required
                   rows={4}
                   placeholder="Type the exact system prompt rules here..."
                   value={template}
                   onChange={e => setTemplate(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                  className="w-full px-4 py-2.5 bg-inset border border-line rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors resize-none"
                 />
               </div>
 

@@ -12,7 +12,7 @@ export default function ContactCard({ contact }) {
     { icon: <Gift size={14} className="text-purple-400" />, label: 'Anniversary', value: contact.anniversary || '—' },
   ];
   return (
-    <div className="mt-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-700/50 grid grid-cols-2 md:grid-cols-3 gap-3">
+    <div className="mt-3 p-3.5 rounded-xl bg-inset/60 border border-line/50 grid grid-cols-2 md:grid-cols-3 gap-3">
       {items.map((item, i) => (
         <div key={i} className="flex items-start gap-2 min-w-0">
           <span className="mt-0.5 shrink-0">{item.icon}</span>

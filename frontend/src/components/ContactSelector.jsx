@@ -14,7 +14,6 @@ function DropdownPortal({ anchorRef, children, onClose }) {
   const reposition = useCallback(() => {
     if (!anchorRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
-    const DROPDOWN_MAX_H = 350;
     const GAP = 6;
 
     const spaceBelow = window.innerHeight - rect.bottom - GAP;
@@ -65,9 +64,8 @@ function DropdownPortal({ anchorRef, children, onClose }) {
         top: pos.top,
         left: pos.left,
         width: pos.width,
-        zIndex: 9999,
+        zIndex: 99999,
         // translateY(-100%) shifts the panel above the trigger when flipping upward.
-        // The matching keyframe starts from calc(-100% + 4px) for a natural slide-up.
         transform: pos.placement === 'top' ? 'translateY(-100%)' : 'translateY(0)',
         animation: pos.placement === 'top'
           ? 'cs-dropdown-in-up 130ms ease-out forwards'
@@ -81,7 +79,7 @@ function DropdownPortal({ anchorRef, children, onClose }) {
 }
 
 // ─── ContactSelector ───────────────────────────────────────────────────────────
-export default function ContactSelector({ contacts, selected, onSelect }) {
+export default function ContactSelector({ contacts = [], selected, onSelect }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(-1);
@@ -90,10 +88,11 @@ export default function ContactSelector({ contacts, selected, onSelect }) {
   const listRef = useRef(null);
   const anchorRef = useRef(null); // measures trigger position for portal
 
-  const filtered = contacts.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.relationship || '').toLowerCase().includes(search.toLowerCase())
+  const safeContacts = Array.isArray(contacts) ? contacts : [];
+  const filtered = safeContacts.filter(c =>
+    (c?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c?.email || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c?.relationship || '').toLowerCase().includes(search.toLowerCase())
   );
 
   // Reset focused index when filtered list changes
@@ -153,23 +152,23 @@ export default function ContactSelector({ contacts, selected, onSelect }) {
 
   return (
     <div ref={anchorRef} className="relative" onKeyDown={handleKeyDown}>
-      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+      <label className="block text-xs font-bold text-black dark:text-slate-300 uppercase tracking-wider mb-1.5">
         Contact *
       </label>
 
       {/* Trigger / Search input */}
       <div
-        className={`flex items-center gap-2 w-full bg-slate-800 border rounded-xl px-3 py-2.5 cursor-text transition-all duration-200 ${
+        className={`flex items-center gap-2 w-full bg-white dark:bg-slate-800 border rounded-xl px-3 py-2.5 cursor-text transition-all duration-200 ${
           open
-            ? 'border-indigo-500/70 ring-2 ring-indigo-500/20'
-            : 'border-slate-700 hover:border-indigo-500/40'
+            ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
+            : 'border-slate-300 dark:border-slate-700 hover:border-indigo-500/40'
         }`}
         onClick={() => { setOpen(true); inputRef.current?.focus(); }}
       >
-        <Search size={15} className="text-slate-500 shrink-0" />
+        <Search size={15} className="text-slate-400 shrink-0" />
         <input
           ref={inputRef}
-          className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none min-w-0"
+          className="flex-1 bg-transparent text-sm text-black dark:text-white placeholder:text-slate-400 outline-none min-w-0 font-medium"
           placeholder="Search contacts by name or email…"
           value={selected && !open ? selected.name : search}
           onChange={e => {
@@ -192,7 +191,7 @@ export default function ContactSelector({ contacts, selected, onSelect }) {
               setSearch('');
               inputRef.current?.focus();
             }}
-            className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-slate-600 hover:bg-slate-500 text-slate-300 text-[10px] font-bold transition-colors"
+            className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-white text-[10px] font-bold transition-colors"
             aria-label="Clear selection"
           >
             ×
@@ -200,25 +199,25 @@ export default function ContactSelector({ contacts, selected, onSelect }) {
         )}
         <ChevronDown
           size={14}
-          className={`text-slate-500 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`text-slate-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </div>
 
-      {/* Portal Dropdown — escapes every overflow ancestor */}
+      {/* Portal Dropdown — escapes every overflow ancestor with solid opaque styling */}
       {open && (
         <DropdownPortal anchorRef={anchorRef} onClose={handleClose}>
           <div
             role="listbox"
             ref={listRef}
             style={{ maxHeight: '350px' }}
-            className="overflow-y-auto bg-[#0F172A] border border-slate-700/80 rounded-xl shadow-2xl shadow-black/70 py-1 ring-1 ring-black/20"
+            className="overflow-y-auto contact-dropdown-panel rounded-xl shadow-2xl py-1 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
           >
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-                <Search size={22} className="text-slate-600 mb-2.5" />
-                <p className="text-sm text-slate-400 font-medium">No contacts found</p>
+                <Search size={22} className="text-slate-400 mb-2.5" />
+                <p className="text-sm text-slate-900 dark:text-white font-bold">No contacts found</p>
                 {search && (
-                  <p className="text-xs text-slate-600 mt-0.5">Try a different name or email</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Try a different name or email</p>
                 )}
               </div>
             ) : (
@@ -233,35 +232,35 @@ export default function ContactSelector({ contacts, selected, onSelect }) {
                     aria-selected={isSelected}
                     onClick={() => handleSelect(c)}
                     onMouseEnter={() => setFocusedIdx(idx)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-100 ${
+                    className={`contact-row w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-100 ${
                       isSelected
-                        ? 'bg-indigo-600/20 border-l-2 border-indigo-500'
+                        ? 'contact-row-selected bg-indigo-50 dark:bg-indigo-950/60 border-l-4 border-indigo-600'
                         : isFocused
-                        ? 'bg-slate-800'
-                        : 'hover:bg-slate-800/70'
+                        ? 'contact-row-focused bg-slate-100 dark:bg-slate-800'
+                        : 'contact-row-hover hover:bg-slate-50 dark:hover:bg-slate-800/70'
                     }`}
                   >
                     {/* Avatar */}
-                    <Avatar name={c.name} src={c.avatar} size="sm" className="shrink-0" />
+                    <Avatar name={c.name} src={c.avatar} size="sm" className="shrink-0 text-white font-bold" />
 
                     {/* Name & Email */}
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-medium truncate transition-colors ${
-                        isSelected ? 'text-indigo-300' : isFocused ? 'text-slate-100' : 'text-slate-200'
+                      <div className={`contact-name text-sm font-semibold truncate transition-colors ${
+                        isSelected ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-900 dark:text-white'
                       }`}>
                         {c.name}
                       </div>
                       {c.email && (
-                        <div className="text-xs text-slate-500 truncate mt-0.5">{c.email}</div>
+                        <div className="contact-email text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">{c.email}</div>
                       )}
                     </div>
 
                     {/* Relationship badge */}
                     {c.relationship && (
-                      <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      <span className={`contact-badge shrink-0 text-[10px] px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
                         isSelected
-                          ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-500/30'
-                          : 'bg-slate-700/80 text-slate-400 border border-slate-600/50'
+                          ? 'contact-badge-selected bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                       }`}>
                         {c.relationship}
                       </span>

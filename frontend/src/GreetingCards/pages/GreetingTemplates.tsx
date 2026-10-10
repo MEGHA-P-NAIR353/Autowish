@@ -136,36 +136,36 @@ export default function GreetingTemplates() {
   const totalShown = grouped.reduce((acc, g) => acc + g.items.length, 0);
 
   return (
-    <div className="p-6 bg-[#0B0F19] min-h-screen text-slate-100 space-y-6">
+    <div className="p-6 bg-inset min-h-screen text-fg space-y-6">
       {/* Header section */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-fg flex items-center gap-2">
             Greeting Card Templates
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted">
             Choose from professionally designed templates to generate your wishes in seconds
           </p>
         </div>
       </div>
 
       {/* Filters and search */}
-      <div className="flex flex-col lg:flex-row gap-3 items-center bg-[#131926]/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur-md">
-        <div className="flex items-center gap-2 bg-[#1A2234] border border-slate-700/50 rounded-xl px-3 py-2 flex-1 w-full">
-          <Search size={14} className="text-slate-400" />
+      <div className="flex flex-col lg:flex-row gap-3 items-center bg-inset/60 p-4 rounded-2xl border border-line/80 backdrop-blur-md">
+        <div className="flex items-center gap-2 bg-surface border border-line/50 rounded-xl px-3 py-2 flex-1 w-full">
+          <Search size={14} className="text-muted" />
           <input
             type="text"
             placeholder="Search templates..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="bg-transparent border-none text-xs text-white outline-none w-full"
+            className="bg-transparent border-none text-xs text-fg outline-none w-full"
           />
         </div>
 
         <select
           value={selectedOccasion}
           onChange={(e) => { setSelectedOccasion(e.target.value); setPage(1); }}
-          className="bg-[#1A2234] border border-slate-700/50 text-xs text-white rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
+          className="bg-surface border border-line/50 text-xs text-fg rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
         >
           <option value="">All Occasions</option>
           {occasions.map((o, i) => (
@@ -176,7 +176,7 @@ export default function GreetingTemplates() {
         <select
           value={selectedCategory}
           onChange={(e) => { setSelectedCategory(e.target.value); setPage(1); }}
-          className="bg-[#1A2234] border border-slate-700/50 text-xs text-white rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
+          className="bg-surface border border-line/50 text-xs text-fg rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
         >
           <option value="">All Styles</option>
           {categories.map((c) => (
@@ -187,7 +187,7 @@ export default function GreetingTemplates() {
         <select
           value={premiumFilter}
           onChange={(e) => { setPremiumFilter(e.target.value as any); setPage(1); }}
-          className="bg-[#1A2234] border border-slate-700/50 text-xs text-white rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
+          className="bg-surface border border-line/50 text-xs text-fg rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
         >
           <option value="all">Free &amp; Premium</option>
           <option value="free">Free Only</option>
@@ -200,7 +200,7 @@ export default function GreetingTemplates() {
           className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border transition-all w-full lg:w-auto justify-center ${
             featuredOnly
               ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-              : 'bg-[#1A2234] border-slate-700/50 text-slate-300 hover:border-indigo-500'
+              : 'bg-surface border-line/50 text-muted hover:border-indigo-500'
           }`}
         >
           <Star size={12} /> Featured
@@ -209,7 +209,7 @@ export default function GreetingTemplates() {
         <select
           value={sortBy}
           onChange={(e) => { setSortBy(e.target.value as any); setPage(1); }}
-          className="bg-[#1A2234] border border-slate-700/50 text-xs text-white rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
+          className="bg-surface border border-line/50 text-xs text-fg rounded-xl px-3 py-2 outline-none focus:border-indigo-500 transition-all w-full lg:w-auto"
         >
           <option value="popular">Most Popular</option>
           <option value="newest">Newest First</option>
@@ -222,14 +222,14 @@ export default function GreetingTemplates() {
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div
               key={i}
-              className="bg-[#131926]/40 rounded-2xl h-[340px] border border-slate-800 animate-pulse"
+              className="bg-inset/40 rounded-2xl h-[340px] border border-line animate-pulse"
             />
           ))}
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-slate-800 rounded-3xl bg-[#131926]/40">
+        <div className="flex flex-col items-center justify-center py-20 text-subtle border border-dashed border-line rounded-3xl bg-inset/40">
           <AlertTriangle size={48} className="mb-4 text-amber-500" />
-          <h3 className="text-white font-semibold mb-1 text-sm">Something went wrong</h3>
+          <h3 className="text-fg font-semibold mb-1 text-sm">Something went wrong</h3>
           <p className="text-xs max-w-xs text-center mb-4">{error}</p>
           <button
             onClick={() => fetchTemplates()}
@@ -239,9 +239,9 @@ export default function GreetingTemplates() {
           </button>
         </div>
       ) : templates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-500 border border-dashed border-slate-800 rounded-3xl bg-[#131926]/40">
+        <div className="flex flex-col items-center justify-center py-20 text-subtle border border-dashed border-line rounded-3xl bg-inset/40">
           <SlidersHorizontal size={48} className="mb-4 text-slate-600" />
-          <h3 className="text-white font-semibold mb-1 text-sm">No Templates Found</h3>
+          <h3 className="text-fg font-semibold mb-1 text-sm">No Templates Found</h3>
           <p className="text-xs max-w-xs text-center">Try widening your filters to show all card designs</p>
         </div>
       ) : (
@@ -261,8 +261,8 @@ export default function GreetingTemplates() {
               <section key={group.key} className="space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{group.emoji}</span>
-                  <h2 className="text-lg font-bold text-white">{group.label}</h2>
-                  <span className="text-xs text-slate-500 bg-slate-800/60 px-2 py-0.5 rounded-full">
+                  <h2 className="text-lg font-bold text-fg">{group.label}</h2>
+                  <span className="text-xs text-subtle bg-raised/60 px-2 py-0.5 rounded-full">
                     {group.items.length}
                   </span>
                 </div>
@@ -276,13 +276,13 @@ export default function GreetingTemplates() {
               </section>
             ))
           )}
-          <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
+          <div className="flex items-center justify-between text-xs text-subtle pt-2">
             <span>Showing {totalShown} template{totalShown === 1 ? '' : 's'}</span>
             <div className="flex items-center gap-2">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="p-2 rounded-xl bg-[#1A2234] border border-slate-700/50 disabled:opacity-40 hover:border-indigo-500 transition-all"
+                className="p-2 rounded-xl bg-surface border border-line/50 disabled:opacity-40 hover:border-indigo-500 transition-all"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -290,7 +290,7 @@ export default function GreetingTemplates() {
               <button
                 disabled={templates.length < PAGE_SIZE}
                 onClick={() => setPage((p) => p + 1)}
-                className="p-2 rounded-xl bg-[#1A2234] border border-slate-700/50 disabled:opacity-40 hover:border-indigo-500 transition-all"
+                className="p-2 rounded-xl bg-surface border border-line/50 disabled:opacity-40 hover:border-indigo-500 transition-all"
               >
                 <ChevronRight size={14} />
               </button>
@@ -306,17 +306,17 @@ export default function GreetingTemplates() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center glass-overlay p-4"
             onClick={() => setPreviewingTemplate(null)}
           >
             <div
-              className="bg-[#0F1422] border border-slate-800/80 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative"
+              className="bg-inset border border-line/80 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => setPreviewingTemplate(null)}
-                className="absolute top-4 right-4 p-2 rounded-full bg-slate-900/60 hover:bg-slate-950 text-slate-400 hover:text-white border border-slate-850 z-20"
+                className="absolute top-4 right-4 p-2 rounded-full bg-inset/60 hover:bg-inset text-muted hover:text-fg border border-line z-20"
               >
                 <X size={16} />
               </button>
@@ -324,12 +324,12 @@ export default function GreetingTemplates() {
               <div className="p-6 space-y-6">
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-indigo-400" />
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  <h3 className="text-sm font-bold text-fg uppercase tracking-wider">
                     Quick Card Preview
                   </h3>
                 </div>
 
-                <div className="flex justify-center bg-slate-950/40 p-4 rounded-2xl border border-slate-900">
+                <div className="flex justify-center bg-inset/40 p-4 rounded-2xl border border-line">
                   <LivePreview
                     cardData={{
                       title: previewingTemplate.title,
@@ -351,10 +351,10 @@ export default function GreetingTemplates() {
                   />
                 </div>
 
-                <div className="flex justify-between items-center bg-slate-950/20 p-4 rounded-xl border border-slate-850">
+                <div className="flex justify-between items-center bg-inset/20 p-4 rounded-xl border border-line">
                   <div>
-                    <h4 className="text-white text-xs font-bold">{previewingTemplate.title}</h4>
-                    <p className="text-[10px] text-slate-400">{previewingTemplate.occasion}</p>
+                    <h4 className="text-fg text-xs font-bold">{previewingTemplate.title}</h4>
+                    <p className="text-[10px] text-muted">{previewingTemplate.occasion}</p>
                   </div>
                   <button
                     type="button"
@@ -362,7 +362,7 @@ export default function GreetingTemplates() {
                       handleUseTemplate(previewingTemplate);
                       setPreviewingTemplate(null);
                     }}
-                    className="px-4 py-2 bg-indigo-650 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/15"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/15"
                   >
                     Use Template
                   </button>

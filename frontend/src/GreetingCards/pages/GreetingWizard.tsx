@@ -30,7 +30,7 @@ const OCCASIONS = [
   { name: 'Mother\'s Day', icon: Smile, color: 'from-rose-500/20 to-pink-500/20 border-rose-500/30' },
   { name: 'Father\'s Day', icon: Star, color: 'from-indigo-500/20 to-sky-500/20 border-indigo-500/30' },
   { name: 'Valentine\'s Day', icon: Heart, color: 'from-rose-500/20 to-red-500/20 border-rose-500/30' },
-  { name: 'Corporate', icon: Briefcase, color: 'from-slate-500/20 to-zinc-500/20 border-slate-500/30' },
+  { name: 'Corporate', icon: Briefcase, color: 'from-slate-500/20 to-zinc-500/20 border-line-strong/30' },
   { name: 'Custom', icon: Plus, color: 'from-purple-500/20 to-pink-500/20 border-purple-500/30' },
 ];
 
@@ -325,21 +325,21 @@ export default function GreetingWizard() {
   // ─── Loading / Error gates ────────────────────────────────────────────────────
   if (isInitializing) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#0B0F19] text-slate-100 gap-4">
+      <div className="flex flex-col items-center justify-center h-screen bg-inset text-slate-100 gap-4">
         <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-        <p className="text-sm text-slate-400">Loading template editor…</p>
+        <p className="text-sm text-muted">Loading template editor…</p>
       </div>
     );
   }
 
   if (initError) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#0B0F19] text-slate-100 gap-4 p-6">
+      <div className="flex flex-col items-center justify-center h-screen bg-inset text-slate-100 gap-4 p-6">
         <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
           <X size={28} className="text-red-400" />
         </div>
-        <h2 className="text-lg font-bold text-white">Template Unavailable</h2>
-        <p className="text-sm text-slate-400 text-center max-w-sm">{initError}</p>
+        <h2 className="text-lg font-bold text-fg">Template Unavailable</h2>
+        <p className="text-sm text-muted text-center max-w-sm">{initError}</p>
         <button
           onClick={() => navigate('/greeting-cards/templates')}
           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all"
@@ -351,16 +351,16 @@ export default function GreetingWizard() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0B0F19] text-slate-100 overflow-hidden">
+    <div className="flex flex-col h-screen bg-inset text-black dark:text-slate-100 overflow-hidden">
       {/* Header bar */}
-      <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-[#0F1422]">
+      <div className="flex justify-between items-center px-6 py-4 border-b border-line bg-inset">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Sparkles size={16} className="text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-white">Auto-Wish AI Redesign</h1>
-            <p className="text-[10px] text-slate-400">Premium guided greeting cards</p>
+            <h1 className="text-sm font-bold tracking-tight text-fg">Auto-Wish AI Redesign</h1>
+            <p className="text-[10px] text-muted">Premium guided greeting cards</p>
           </div>
         </div>
 
@@ -368,7 +368,7 @@ export default function GreetingWizard() {
           {step > 1 && (
             <button
               onClick={() => setStep(step - 1)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-350 hover:text-white rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-raised text-black dark:text-muted hover:text-black dark:hover:text-fg rounded-xl text-xs font-bold border border-line transition-all shadow-sm"
             >
               <ChevronLeft size={13} />
               <span>Back</span>
@@ -377,7 +377,7 @@ export default function GreetingWizard() {
           {step < 3 && (
             <button
               onClick={() => setStep(step + 1)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-650 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-650/10 transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/10 transition-all"
             >
               <span>Next Step</span>
               <ChevronRight size={13} />
@@ -387,7 +387,7 @@ export default function GreetingWizard() {
       </div>
 
       {/* Stepper progress */}
-      <div className="p-4 bg-[#0B0F19]">
+      <div className="p-4 bg-inset">
         <Stepper currentStep={step} steps={STEPS} />
       </div>
 
@@ -404,8 +404,8 @@ export default function GreetingWizard() {
               className="h-full overflow-y-auto p-6 max-w-4xl mx-auto space-y-6"
             >
               <div className="text-center space-y-2 max-w-md mx-auto py-4">
-                <h2 className="text-xl font-bold text-white tracking-tight">Select Occasion</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className="text-xl font-bold text-fg tracking-tight">Select Occasion</h2>
+                <p className="text-xs text-muted">
                   Select the target event occasion category to guide custom cards designs
                 </p>
               </div>
@@ -419,10 +419,10 @@ export default function GreetingWizard() {
                       onClick={() => handleSelectOccasion(occ.name)}
                       className={`flex flex-col items-center justify-center p-6 rounded-2xl border bg-gradient-to-br ${occ.color} hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group`}
                     >
-                      <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white mb-3 shadow-md group-hover:bg-indigo-600 group-hover:scale-115 transition-all duration-300">
+                      <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-fg mb-3 shadow-md group-hover:bg-indigo-600 group-hover:text-white group-hover:scale-115 transition-all duration-300">
                         <Icon size={22} />
                       </div>
-                      <span className="text-xs font-bold text-slate-200 group-hover:text-white transition-colors">
+                      <span className="text-xs font-bold text-fg transition-colors">
                         {occ.name}
                       </span>
                     </button>
@@ -442,8 +442,8 @@ export default function GreetingWizard() {
               className="h-full overflow-y-auto p-6 max-w-5xl mx-auto space-y-6"
             >
               <div className="text-center space-y-2 max-w-md mx-auto">
-                <h2 className="text-xl font-bold text-white tracking-tight">Choose Card Design</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className="text-xl font-bold text-fg tracking-tight">Choose Card Design</h2>
+                <p className="text-xs text-muted">
                   Pick a premium theme base to customize.
                 </p>
               </div>
@@ -465,7 +465,7 @@ export default function GreetingWizard() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 glass-overlay"
                   onClick={() => setPreviewTemplate(null)}
                 >
                   <motion.div
@@ -473,15 +473,15 @@ export default function GreetingWizard() {
                     animate={{ scale: 1, y: 0 }}
                     exit={{ scale: 0.94, y: 12 }}
                     transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-                    className="w-full max-w-sm bg-[#0F1422] border border-[#334155] rounded-2xl overflow-hidden shadow-2xl"
+                    className="w-full max-w-sm bg-inset border border-line rounded-2xl overflow-hidden shadow-2xl"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1E293B]">
-                      <h3 className="text-sm font-bold text-[#F8FAFC]">Template Preview</h3>
+                    <div className="flex items-center justify-between px-5 py-3.5 border-b border-line-soft">
+                      <h3 className="text-sm font-bold text-fg">Template Preview</h3>
                       <button
                         type="button"
                         onClick={() => setPreviewTemplate(null)}
-                        className="p-1.5 rounded-lg bg-[#1E293B] hover:bg-[#334155] text-slate-300 transition-all"
+                        className="p-1.5 rounded-lg bg-surface hover:bg-raised-hover text-muted transition-all"
                         aria-label="Close"
                       >
                         <X size={15} />
@@ -489,7 +489,7 @@ export default function GreetingWizard() {
                     </div>
                     <div className="p-5">
                       <TemplatePreview template={previewTemplate} showLabel={false} />
-                      <p className="text-center text-[11px] text-[#94A3B8] mt-3">{previewTemplate.title}</p>
+                      <p className="text-center text-[11px] text-muted mt-3">{previewTemplate.title}</p>
                       <button
                         type="button"
                         onClick={() => { handleSelectTemplate(previewTemplate); setPreviewTemplate(null); }}
@@ -513,7 +513,7 @@ export default function GreetingWizard() {
               className="h-full flex flex-col md:flex-row overflow-hidden"
             >
               {/* Left customization panel (guided customization) */}
-              <div className="w-full md:w-[35%] border-r border-slate-850 bg-[#0F1422]/60 p-4 overflow-y-auto">
+              <div className="w-full md:w-[35%] border-r border-line-soft bg-inset/60 p-4 overflow-y-auto">
                 <CustomizationPanel
                   cardData={cardData}
                   onChange={(updates) => setCardData((prev) => ({ ...prev, ...updates }))}
@@ -542,7 +542,7 @@ export default function GreetingWizard() {
               </div>
 
               {/* Right side live card preview (occupies ~65% width) */}
-              <div className="w-full md:w-[65%] bg-[#0B0F19] flex flex-col justify-center items-center p-6 relative">
+              <div className="w-full md:w-[65%] bg-inset flex flex-col justify-center items-center p-6 relative">
                 <div className="w-full max-w-[450px]">
                   <LivePreview
                     ref={cardRef}
@@ -568,13 +568,13 @@ export default function GreetingWizard() {
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-xl font-bold text-white">Your Card is Ready!</h2>
-                <p className="text-xs text-slate-400 max-w-sm">
+                <h2 className="text-xl font-bold text-fg">Your Card is Ready!</h2>
+                <p className="text-xs text-muted max-w-sm">
                   Send this beautifully crafted greeting card to your recipient instantly or download high quality image.
                 </p>
               </div>
 
-              <div className="w-full max-w-[340px] bg-slate-900/40 p-3 rounded-2xl border border-slate-800/80">
+              <div className="w-full max-w-[340px] bg-inset/40 p-3 rounded-2xl border border-line-soft/80">
                 <LivePreview
                   ref={cardRef}
                   cardData={cardData}
@@ -603,14 +603,14 @@ export default function GreetingWizard() {
                 <button
                   onClick={handleDownload}
                   disabled={autoFitResult?.overflow}
-                  className="flex-1 py-2.5 bg-slate-850 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+                  className="flex-1 py-2.5 bg-surface hover:bg-raised disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 rounded-xl text-xs font-semibold border border-line-soft transition-all"
                 >
                   Download Image
                 </button>
                 <button
                   onClick={() => handleSave('published')}
                   disabled={!selectedContact?.id || !selectedContact?.email || loading || autoFitResult?.overflow}
-                  className="flex-1 py-2.5 bg-indigo-650 hover:bg-indigo-650/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/20 transition-all"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-600/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all"
                 >
                   Send Card Now
                 </button>

@@ -21,14 +21,14 @@ export default function BottomToolbar({
   isOverflowed = false,
 }: BottomToolbarProps) {
   return (
-    <div className="w-full bg-[#0D121F]/90 backdrop-blur-md border-t border-slate-800/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20">
+    <div className="w-full bg-inset/90 backdrop-blur-md border-t border-line px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20">
       {/* Left side actions: Save Draft, Template */}
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onSaveDraft}
           disabled={isSaving}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-850 hover:bg-slate-800 disabled:opacity-50 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+          className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-raised disabled:opacity-50 text-black dark:text-muted hover:text-black dark:hover:text-fg rounded-xl text-xs font-bold border border-line transition-all shadow-sm"
         >
           <Save size={14} />
           <span>{isSaving ? 'Saving...' : 'Save Draft'}</span>
@@ -38,7 +38,7 @@ export default function BottomToolbar({
           type="button"
           onClick={onSaveTemplate}
           disabled={isSaving}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-850 hover:bg-slate-800 disabled:opacity-50 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+          className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-raised disabled:opacity-50 text-black dark:text-muted hover:text-black dark:hover:text-fg rounded-xl text-xs font-bold border border-line transition-all shadow-sm"
         >
           <FileText size={14} />
           <span>Save Template</span>
@@ -50,7 +50,7 @@ export default function BottomToolbar({
         <button
           type="button"
           onClick={onPreview}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-800 transition-all"
+          className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-raised text-black dark:text-muted hover:text-black dark:hover:text-fg rounded-xl text-xs font-bold border border-line transition-all shadow-sm"
         >
           <Eye size={14} />
           <span>Live Preview</span>
@@ -61,7 +61,7 @@ export default function BottomToolbar({
           onClick={onDownload}
           disabled={isOverflowed}
           title={isOverflowed ? 'Cannot download: message exceeds card bounds' : undefined}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-indigo-400 hover:text-white rounded-xl text-xs font-semibold transition-all"
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-indigo-700 dark:text-indigo-400 hover:text-white rounded-xl text-xs font-bold transition-all"
         >
           <Download size={14} />
           <span>Download</span>
@@ -72,7 +72,7 @@ export default function BottomToolbar({
           onClick={onSend}
           disabled={isOverflowed}
           title={isOverflowed ? 'Cannot send: message exceeds card bounds' : undefined}
-          className="flex items-center gap-2 px-5 py-2 bg-indigo-650 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-650/20 transition-all"
+          className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all"
         >
           <Send size={14} />
           <span>Publish &amp; Send</span>

@@ -28,8 +28,8 @@ const VerifyEmail = () => {
   }, [token]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center px-6">
-      <div className="max-w-md w-full bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 p-8 rounded-3xl text-center shadow-2xl">
+    <div className="min-h-screen bg-inset text-fg flex flex-col justify-center items-center px-6">
+      <div className="max-w-md w-full bg-raised/50 backdrop-blur-xl border border-line/50 p-8 rounded-3xl text-center shadow-2xl">
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-500/20">
             <Mail className="text-blue-400" size={32} />
@@ -71,7 +71,7 @@ const VerifyEmail = () => {
             <p className="text-slate-400 mb-6 text-sm">The verification link is invalid, expired, or has already been used.</p>
             <Link
               to="/"
-              className="block w-full py-3 bg-slate-700 hover:bg-slate-600 transition-colors font-medium rounded-xl text-sm"
+              className="block w-full py-3 bg-raised-hover hover:bg-line-strong transition-colors font-medium rounded-xl text-sm"
             >
               Back to Home
             </Link>

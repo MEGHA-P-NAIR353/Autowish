@@ -21,7 +21,7 @@ const About = () => {
       {/* Grid values */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {values.map((v, idx) => (
-          <div key={idx} className="bg-slate-850 border border-slate-800 p-6 rounded-3xl space-y-3.5">
+          <div key={idx} className="bg-surface border border-line-soft p-6 rounded-3xl space-y-3.5">
             <div className="w-10 h-10 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center">
               <v.icon size={20} />
             </div>

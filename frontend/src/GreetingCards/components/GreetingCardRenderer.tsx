@@ -118,6 +118,7 @@ export const GreetingCardRenderer = React.forwardRef<HTMLDivElement, GreetingCar
       <div
         ref={ref}
         id="greeting-card-canonical-canvas"
+        data-card-renderer="true"
         className={`relative w-full aspect-square rounded-3xl overflow-hidden shadow-2xl shadow-black/50 border border-white/10 flex flex-col justify-between select-none ${className}`}
         style={bgStyle}
       >

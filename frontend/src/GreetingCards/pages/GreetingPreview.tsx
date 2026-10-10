@@ -29,10 +29,10 @@ export default function GreetingPreview() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0B0F19]">
+      <div className="flex items-center justify-center min-h-screen bg-inset">
         <div className="animate-pulse space-y-4">
-          <div className="w-40 h-40 bg-slate-800 rounded-2xl" />
-          <div className="h-4 w-28 bg-slate-800 rounded mx-auto" />
+          <div className="w-40 h-40 bg-raised rounded-2xl" />
+          <div className="h-4 w-28 bg-raised rounded mx-auto" />
         </div>
       </div>
     );
@@ -40,7 +40,7 @@ export default function GreetingPreview() {
 
   if (!card) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#0B0F19] text-slate-400">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-inset text-slate-400">
         <p className="mb-4">Greeting card not found.</p>
         <button
           onClick={() => navigate('/greeting-cards')}
@@ -53,12 +53,12 @@ export default function GreetingPreview() {
   }
 
   return (
-    <div className="p-6 bg-[#0B0F19] min-h-screen text-slate-100 space-y-6">
+    <div className="p-6 bg-inset min-h-screen text-slate-100 space-y-6">
       {/* Header bar */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-850">
+      <div className="flex items-center justify-between pb-4 border-b border-line-soft">
         <button
           onClick={() => navigate('/greeting-cards')}
-          className="flex items-center gap-1.5 text-xs text-slate-450 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-fg transition-colors"
         >
           <ChevronLeft size={14} />
           Back to Cards
@@ -67,7 +67,7 @@ export default function GreetingPreview() {
         <div className="flex gap-2">
           <button
             onClick={() => toast.success('Share link copied to clipboard!')}
-            className="p-2 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-800 text-slate-350 hover:text-white transition-all"
+            className="p-2 rounded-xl bg-surface hover:bg-raised border border-line-soft text-slate-350 hover:text-fg transition-all"
             title="Share card link"
           >
             <Share2 size={13} />
@@ -82,18 +82,18 @@ export default function GreetingPreview() {
         </div>
 
         {/* Metadata Details */}
-        <div className="space-y-6 bg-[#131926]/40 p-6 rounded-2xl border border-slate-800/80">
+        <div className="space-y-6 bg-inset/40 p-6 rounded-2xl border border-line-soft/80">
           <div>
             <span className="text-[10px] text-indigo-400 uppercase tracking-widest font-extrabold px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/15">
               {card.occasion}
             </span>
-            <h2 className="text-xl font-bold text-white mt-3">{card.title}</h2>
+            <h2 className="text-xl font-bold text-fg mt-3">{card.title}</h2>
             {card.recipient_name && (
               <p className="text-xs text-slate-400 mt-1">For recipient: {card.recipient_name}</p>
             )}
           </div>
 
-          <div className="border-t border-slate-850 pt-4 space-y-3">
+          <div className="border-t border-line-soft pt-4 space-y-3">
             <div className="flex items-center gap-2 text-xs text-slate-300">
               <Calendar size={14} className="text-slate-500" />
               <span>Status: <strong className="text-indigo-400 capitalize">{card.status}</strong></span>
