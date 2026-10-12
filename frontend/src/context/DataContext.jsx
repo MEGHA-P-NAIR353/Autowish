@@ -187,82 +187,52 @@ export const DataProvider = ({ children }) => {
 
   // ── Contacts CRUD ─────────────────────────────────────────────────────────
   const addContact = async (contact) => {
-    try {
-      const resp = await contactsAPI.create(contact);
-      const newContact = resp.data;
-      setContacts((prev) => [newContact, ...prev]);
-      return newContact;
-    } catch {
-      const newContact = { ...contact, id: Date.now() };
-      setContacts((prev) => [newContact, ...prev]);
-      return newContact;
-    }
+    const resp = await contactsAPI.create(contact);
+    const newContact = resp.data;
+    setContacts((prev) => [newContact, ...prev]);
+    return newContact;
   };
 
   const updateContact = async (id, updatedContact) => {
-    try {
-      const resp = await contactsAPI.update(id, updatedContact);
-      setContacts((prev) => prev.map((c) => (c.id === id ? resp.data : c)));
-    } catch {
-      setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...updatedContact } : c)));
-    }
+    const resp = await contactsAPI.update(id, updatedContact);
+    setContacts((prev) => prev.map((c) => (c.id === id ? resp.data : c)));
+    return resp.data;
   };
 
   const deleteContact = async (id) => {
-    try {
-      await contactsAPI.delete(id);
-    } catch { /* silently proceed */ }
+    await contactsAPI.delete(id);
     setContacts((prev) => prev.filter((c) => c.id !== id));
   };
 
   // ── Events CRUD ───────────────────────────────────────────────────────────
   const addEvent = async (event) => {
-    try {
-      const resp = await eventsAPI.create(event);
-      const newEvent = resp.data;
-      setEvents((prev) => [newEvent, ...prev]);
-      return newEvent;
-    } catch {
-      const newEvent = { ...event, id: Date.now() };
-      setEvents((prev) => [newEvent, ...prev]);
-      return newEvent;
-    }
+    const resp = await eventsAPI.create(event);
+    const newEvent = resp.data;
+    setEvents((prev) => [newEvent, ...prev]);
+    return newEvent;
   };
 
   const updateEvent = async (id, updatedEvent) => {
-    try {
-      const resp = await eventsAPI.update(id, updatedEvent);
-      setEvents((prev) => prev.map((e) => (e.id === id ? resp.data : e)));
-    } catch {
-      setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, ...updatedEvent } : e)));
-    }
+    const resp = await eventsAPI.update(id, updatedEvent);
+    setEvents((prev) => prev.map((e) => (e.id === id ? resp.data : e)));
+    return resp.data;
   };
 
   const deleteEvent = async (id) => {
-    try {
-      await eventsAPI.delete(id);
-    } catch { /* silently proceed */ }
+    await eventsAPI.delete(id);
     setEvents((prev) => prev.filter((e) => e.id !== id));
   };
 
   // ── Scheduled Wishes CRUD ────────────────────────────────────────────────
   const addScheduledWish = async (wish) => {
-    try {
-      const resp = await scheduledAPI.create(wish);
-      const newWish = resp.data;
-      setScheduledWishes((prev) => [newWish, ...prev]);
-      return newWish;
-    } catch {
-      const newWish = { ...wish, id: Date.now() };
-      setScheduledWishes((prev) => [newWish, ...prev]);
-      return newWish;
-    }
+    const resp = await scheduledAPI.create(wish);
+    const newWish = resp.data;
+    setScheduledWishes((prev) => [newWish, ...prev]);
+    return newWish;
   };
 
   const deleteScheduledWish = async (id) => {
-    try {
-      await scheduledAPI.delete(id);
-    } catch { /* silently proceed */ }
+    await scheduledAPI.delete(id);
     setScheduledWishes((prev) => prev.filter((w) => w.id !== id));
   };
 

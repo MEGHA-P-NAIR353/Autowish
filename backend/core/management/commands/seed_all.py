@@ -8,18 +8,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # 1. Admin account creation
-        admin_email = os.getenv('ADMIN_EMAIL', 'admin@autowish.ai')
-        admin_password = os.getenv('ADMIN_PASSWORD', 'AdminSecure123')
-        
-        if not User.objects.filter(email=admin_email).exists():
-            admin_user = User.objects.create_superuser(
-                username=admin_email.split('@')[0],
-                email=admin_email,
-                password=admin_password
-            )
-            self.stdout.write(self.style.SUCCESS(f"Successfully created admin user: {admin_email}"))
+        from core.admin_provisioning import ensure_admin_user
+        admin_user = ensure_admin_user()
+        if admin_user:
+            self.stdout.write(self.style.SUCCESS(f"Successfully provisioned/verified admin user: {admin_user.email}"))
         else:
-            self.stdout.write(self.style.WARNING(f"Admin user already exists with email: {admin_email}"))
+            self.stdout.write(self.style.WARNING("Admin provisioning skipped (ADMIN_EMAIL not set)."))
 
         # 2. Seed default AI prompts
         default_prompts = [

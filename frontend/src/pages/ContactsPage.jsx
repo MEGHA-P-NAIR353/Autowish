@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { contactsAPI } from '../services/api';
 import Avatar from '../components/common/Avatar';
-import { Plus, Search, Download, Upload, Edit2, Trash2, Users, Mail, Phone, Calendar } from 'lucide-react';
+import { Plus, Search, Download, Upload, Edit2, Trash2, Users, Mail, Phone, Calendar, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   GlassCard, GlassButton, GlassModal, GlassInput,
@@ -11,11 +12,12 @@ import {
 import EmptyState from '../components/common/EmptyState';
 
 const ContactsPage = () => {
-  const { contacts, addContact, updateContact, deleteContact, loading } = useData();
+  const { contacts, addContact, updateContact, deleteContact, loading, fetchAll } = useData();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [showModal, setShowModal] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
+  const [importing, setImporting] = useState(false);
   const [formData, setFormData] = useState({
     name: '', email: '', birthday: '', anniversary: '', phone: '', relationship: 'Friend', notes: ''
   });
@@ -61,8 +63,15 @@ const ContactsPage = () => {
         toast.success('Contact added');
       }
       setShowModal(false);
-    } catch {
-      toast.error('Failed to save contact');
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.email?.[0] ||
+        err.response?.data?.phone?.[0] ||
+        err.response?.data?.name?.[0] ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Failed to save contact';
+      toast.error(errorMsg);
     }
   };
 
@@ -109,35 +118,56 @@ const ContactsPage = () => {
     toast.success('Exported autowish-contacts.csv');
   };
 
-  const handleImport = (e) => {
-    const file = e.target.files[0];
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const lines = event.target.result.split('\n').slice(1);
-      let count = 0;
-      for (const line of lines) {
-        if (line.trim()) {
-          const parts = line.split(',').map(s => s.replace(/(^"|"$)/g, '').trim());
-          const [name, birthday, anniversary, email, phone, relationship] = parts;
-          if (name && email) {
-            await addContact({ 
-              name, 
-              email, 
-              birthday: birthday || '', 
-              anniversary: anniversary || '',
-              phone: phone || '',
-              relationship: relationship || 'Friend'
-            });
-            count++;
-          }
-        }
-      }
-      toast.success(`${count} contacts imported`);
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a valid .csv file');
       e.target.value = '';
-    };
-    reader.readAsText(file);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setImporting(true);
+    const toastId = toast.loading('Importing contacts into database...');
+
+    try {
+      const resp = await contactsAPI.importCSV(formData);
+      const data = resp.data;
+
+      if (data.success) {
+        let msg = `Imported ${data.imported} contact${data.imported === 1 ? '' : 's'}!`;
+        if (data.duplicates_skipped > 0) {
+          msg += ` (${data.duplicates_skipped} duplicate${data.duplicates_skipped === 1 ? '' : 's'} skipped)`;
+        }
+        toast.success(msg, { id: toastId });
+
+        if (data.rejected > 0) {
+          const detail = data.errors?.[0] || `${data.rejected} rows could not be parsed`;
+          toast.error(`Note: ${data.rejected} row(s) rejected: ${detail}`, { duration: 6000 });
+        }
+      } else {
+        toast.error(data.error || 'Failed to import contacts', { id: toastId });
+      }
+
+      // Refresh contacts from backend so they persist and are immediately visible
+      if (fetchAll) {
+        await fetchAll();
+      }
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Error uploading contacts file';
+      toast.error(errorMsg, { id: toastId });
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
   };
 
   return (
@@ -148,10 +178,24 @@ const ContactsPage = () => {
         icon={Users}
         actions={
           <div className="flex flex-wrap items-center gap-2.5">
-            <label className="btn-secondary btn-sm cursor-pointer inline-flex items-center gap-1.5">
-              <Upload size={14} aria-hidden="true" />
-              <span>Import CSV</span>
-              <input type="file" accept=".csv" onChange={handleImport} className="hidden" />
+            <label
+              className={`btn-secondary btn-sm cursor-pointer inline-flex items-center gap-1.5 ${
+                importing ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''
+              }`}
+            >
+              {importing ? (
+                <Loader2 size={14} className="animate-spin text-primary" aria-hidden="true" />
+              ) : (
+                <Upload size={14} aria-hidden="true" />
+              )}
+              <span>{importing ? 'Importing...' : 'Import CSV'}</span>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleImport}
+                disabled={importing}
+                className="hidden"
+              />
             </label>
             <GlassButton
               variant="secondary"

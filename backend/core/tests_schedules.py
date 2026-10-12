@@ -478,3 +478,65 @@ class ScheduleBugFixTests(TestCase):
             self.assertEqual(wish.status, 'Failed')
             self.assertEqual(wish.delivery_status, 'Failed')
             self.assertIn("SMTP Connection Error", wish.last_error)
+
+    def test_create_schedule_with_empty_string_greeting_card_succeeds(self):
+        """
+        Submitting greeting_card: '' (empty string from form default) must be handled
+        gracefully as None/null rather than throwing a PrimaryKeyRelatedField type error.
+        """
+        future_dt = timezone.localtime(timezone.now(), pytz.timezone('Asia/Kolkata')) + timedelta(days=2)
+        payload = {
+            'contact': self.contact.id,
+            'date': future_dt.strftime('%Y-%m-%d'),
+            'time': future_dt.strftime('%H:%M'),
+            'occasion': 'Birthday',
+            'message': 'Happy Birthday Alice!',
+            'timezone': 'Asia/Kolkata',
+            'greeting_card': '',  # Empty string from form
+        }
+        response = self.client.post('/api/schedules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        wish = ScheduledWish.objects.get(pk=response.data['id'])
+        self.assertIsNone(wish.greeting_card)
+
+    def test_create_schedule_for_other_users_contact_rejected(self):
+        """
+        Security requirement: A user cannot schedule wishes for another user's contacts.
+        Must return 400 validation error.
+        """
+        other_user = User.objects.create_user(username='other_schedule_user', password='password123')
+        other_contact = Contact.objects.create(
+            user=other_user,
+            name='Eve Private',
+            email='eve@example.com'
+        )
+
+        future_dt = timezone.localtime(timezone.now(), pytz.timezone('Asia/Kolkata')) + timedelta(days=2)
+        payload = {
+            'contact': other_contact.id,
+            'date': future_dt.strftime('%Y-%m-%d'),
+            'time': future_dt.strftime('%H:%M'),
+            'occasion': 'Birthday',
+            'message': 'Unauthorized wish attempt',
+            'timezone': 'Asia/Kolkata',
+        }
+        response = self.client.post('/api/schedules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('contact', response.data)
+
+    def test_create_schedule_with_past_datetime_rejected(self):
+        """
+        Business rule: Wishes cannot be scheduled in the past.
+        """
+        past_dt = timezone.localtime(timezone.now(), pytz.timezone('Asia/Kolkata')) - timedelta(days=1)
+        payload = {
+            'contact': self.contact.id,
+            'date': past_dt.strftime('%Y-%m-%d'),
+            'time': past_dt.strftime('%H:%M'),
+            'occasion': 'Birthday',
+            'message': 'Past wish attempt',
+            'timezone': 'Asia/Kolkata',
+        }
+        response = self.client.post('/api/schedules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+

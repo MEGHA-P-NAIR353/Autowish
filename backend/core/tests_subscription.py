@@ -101,7 +101,7 @@ class SubscriptionLimitTests(TestCase):
             'use_cache': False,
         }, format='json')
         self.assertEqual(res.status_code, 403)
-        self.assertEqual(res.data['code'], 'AI_GENERATION_LIMIT_REACHED')
+        self.assertIn(res.data['code'], ['AI_WISH_LIMIT_REACHED', 'AI_GENERATION_LIMIT_REACHED'])
         mock_generate.assert_not_called()
 
     def test_pro_plan_limits(self):

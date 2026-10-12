@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
@@ -461,8 +461,53 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
       });
       handleFormChange('message', res.data.greeting);
       toast.success('AI greeting regenerated!');
-    } catch {
-      toast.error('Failed to regenerate AI greeting.');
+    } catch (err) {
+      const errData = err.response?.data;
+      const errCode = errData?.code || errData?.error_code;
+      const status = err.response?.status;
+
+      if (errCode === 'AI_WISH_LIMIT_REACHED' || status === 403 || status === 429) {
+        toast((t) => (
+          <div className="flex flex-col gap-1.5 p-1 max-w-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✨</span>
+              <span className="font-semibold text-fg text-sm">AI Wish Limit Reached</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {errData?.message || "You've used all the AI wishes included in your current plan. Upgrade to generate more personalized greetings."}
+            </p>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition"
+              >
+                Dismiss
+              </button>
+              <Link
+                to="/subscription"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-3 py-1.5 rounded-md font-semibold bg-primary hover:bg-primary-hover text-white transition flex items-center gap-1 shadow-sm"
+              >
+                Upgrade Plan &rarr;
+              </Link>
+            </div>
+          </div>
+        ), {
+          id: 'ai-wish-limit-toast',
+          duration: 8000,
+          position: 'top-center',
+          style: {
+            background: 'rgba(23, 27, 38, 0.95)',
+            color: '#f8fafc',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '1rem',
+            backdropFilter: 'blur(16px)',
+          },
+        });
+      } else {
+        toast.error(errData?.error || errData?.message || 'Failed to regenerate AI greeting.');
+      }
     } finally {
       setGenerating(false);
     }
@@ -473,7 +518,11 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
     if (!form.date) { toast.error('Please select a date'); return; }
     setSaving(true);
     try {
-      const payload = { ...form, contact: form.contact };
+      const payload = {
+        ...form,
+        contact: form.contact ? Number(form.contact) : null,
+        greeting_card: form.greeting_card ? Number(form.greeting_card) : null,
+      };
       if (isEdit) {
         await schedulesAPI.patch(wish.id, payload);
         toast.success('Schedule updated!');
@@ -485,8 +534,22 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
       onSave();
       onClose();
     } catch (err) {
-      const msg = err.response?.data?.date || err.response?.data?.detail || 'Failed to save schedule.';
-      toast.error(Array.isArray(msg) ? msg[0] : msg);
+      const data = err.response?.data;
+      let msg = 'Failed to save schedule.';
+      if (typeof data === 'string') {
+        msg = data;
+      } else if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0];
+        const val = data[firstKey];
+        if (Array.isArray(val)) {
+          msg = `${firstKey !== 'detail' && firstKey !== 'non_field_errors' ? `${firstKey}: ` : ''}${val[0]}`;
+        } else if (typeof val === 'string') {
+          msg = val;
+        } else if (data.detail) {
+          msg = data.detail;
+        }
+      }
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -1111,8 +1174,53 @@ const ScheduleWishPage = () => {
       setViewWish(w => ({ ...w, message: res.data.greeting }));
       fetchSchedules();
       toast.success('AI greeting regenerated!');
-    } catch {
-      toast.error('Regeneration failed.');
+    } catch (err) {
+      const errData = err.response?.data;
+      const errCode = errData?.code || errData?.error_code;
+      const status = err.response?.status;
+
+      if (errCode === 'AI_WISH_LIMIT_REACHED' || status === 403 || status === 429) {
+        toast((t) => (
+          <div className="flex flex-col gap-1.5 p-1 max-w-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✨</span>
+              <span className="font-semibold text-fg text-sm">AI Wish Limit Reached</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {errData?.message || "You've used all the AI wishes included in your current plan. Upgrade to generate more personalized greetings."}
+            </p>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition"
+              >
+                Dismiss
+              </button>
+              <Link
+                to="/subscription"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-3 py-1.5 rounded-md font-semibold bg-primary hover:bg-primary-hover text-white transition flex items-center gap-1 shadow-sm"
+              >
+                Upgrade Plan &rarr;
+              </Link>
+            </div>
+          </div>
+        ), {
+          id: 'ai-wish-limit-toast',
+          duration: 8000,
+          position: 'top-center',
+          style: {
+            background: 'rgba(23, 27, 38, 0.95)',
+            color: '#f8fafc',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '1rem',
+            backdropFilter: 'blur(16px)',
+          },
+        });
+      } else {
+        toast.error(errData?.error || errData?.message || 'Regeneration failed.');
+      }
     }
   };
 

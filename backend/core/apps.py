@@ -10,6 +10,19 @@ class CoreConfig(AppConfig):
         import sys
         from django.conf import settings
 
+        # Connect post_migrate signal for idempotent administrator provisioning
+        from django.db.models.signals import post_migrate
+
+        def _on_post_migrate(sender, **kwargs):
+            if sender.name == 'core':
+                try:
+                    from core.admin_provisioning import ensure_admin_user
+                    ensure_admin_user()
+                except Exception as ex:
+                    print(f"[ADMIN PROVISION ERROR] {ex}")
+
+        post_migrate.connect(_on_post_migrate, sender=self)
+
         # Do not start background scheduler during tests, migrations, checks, or shell
         if any(cmd in sys.argv for cmd in ['test', 'pytest', 'makemigrations', 'migrate', 'collectstatic', 'check', 'showmigrations', 'shell']):
             return

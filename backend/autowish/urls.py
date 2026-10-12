@@ -19,7 +19,7 @@ from core.views import (
     payment_list, payment_detail, admin_dashboard_stats,
     recent_activity,
     GreetingCardTemplateViewSet, GreetingCardViewSet,
-    global_search
+    global_search, reports_data
 )
 
 router = DefaultRouter()
@@ -73,6 +73,7 @@ urlpatterns = [
     # Dashboard & Admin
     path('api/dashboard/stats/', dashboard_stats, name='dashboard-stats'),
     path('api/dashboard/recent-activity/', recent_activity, name='recent-activity'),
+    path('api/reports/', reports_data, name='reports-data'),
     path('api/analytics/greetings/', greeting_analytics, name='greeting-analytics'),
     path('api/admin/dashboard/stats/', admin_dashboard_stats, name='admin-dashboard-stats'),
     path('api/search/', global_search, name='global-search'),

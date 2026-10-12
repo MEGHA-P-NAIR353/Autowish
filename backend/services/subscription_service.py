@@ -105,8 +105,13 @@ def check_ai_generation_limit(user):
     used = count_monthly_ai_generations(user)
     if _limit_reached(used, limits['ai_generation_limit']):
         raise PermissionDenied({
-            'detail': 'You have reached your monthly AI generation limit for your current plan.',
-            'code': 'AI_GENERATION_LIMIT_REACHED',
+            'detail': "You've used all your AI wishes for this plan. Upgrade your plan to generate more personalized greetings!",
+            'code': 'AI_WISH_LIMIT_REACHED',
+            'error': 'AI Wish Limit Reached',
+            'plan': limits['plan_id'],
+            'limit': limits['ai_generation_limit'],
+            'used': used,
+            'remaining': 0,
         })
 
 

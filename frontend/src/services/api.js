@@ -88,6 +88,11 @@ export const analyticsAPI = {
   getGreetings: () => api.get('analytics/greetings/'),
 };
 
+// ─── Reports ─────────────────────────────────────────────────────────────────
+export const reportsAPI = {
+  getReports: (params = {}) => api.get('reports/', { params }),
+};
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 export const contactsAPI = {
   getAll: (params = {}) => api.get('contacts/', { params }),

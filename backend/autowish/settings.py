@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Explicitly load .env from BASE_DIR
+# Explicitly load .env from BASE_DIR and workspace root if present
 load_dotenv(BASE_DIR / '.env')
+if (BASE_DIR.parent / '.env').exists():
+    load_dotenv(BASE_DIR.parent / '.env', override=False)
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-prod')
 
@@ -302,4 +304,8 @@ OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/ap
 AI_PROVIDER_TIMEOUT = float(os.getenv('AI_PROVIDER_TIMEOUT', '15.0'))
 AI_CACHE_TTL = int(os.getenv('AI_CACHE_TTL', '86400'))
 
-
+# ==============================================================================
+# Administrator Configuration (from environment / Render settings)
+# ==============================================================================
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '').strip()
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '').strip()

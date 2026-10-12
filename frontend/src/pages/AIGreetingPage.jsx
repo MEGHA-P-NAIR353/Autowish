@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { aiAPI } from '../services/api';
 import toast from 'react-hot-toast';
@@ -188,7 +189,6 @@ const AIGreetingPage = () => {
     }
 
     setGenerating(true);
-    setGreeting('');
     setEmailSent(false);
     setEditMode(false);
 
@@ -211,8 +211,65 @@ const AIGreetingPage = () => {
     } catch (err) {
       console.error('[AI_GREETING_ERROR]', err.response?.data || err);
       const backendErr = err.response?.data;
-      const msg = backendErr?.details
-        ? `${backendErr.error}: ${typeof backendErr.details === 'string' ? backendErr.details : JSON.stringify(backendErr.details)}`
+      const errCode = backendErr?.code || backendErr?.error_code;
+      const status = err.response?.status;
+
+      // Handle plan limit reached with a polished upgrade toast
+      if (errCode === 'AI_WISH_LIMIT_REACHED' || status === 403 || status === 429) {
+        toast((t) => (
+          <div className="flex flex-col gap-1.5 p-1 max-w-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✨</span>
+              <span className="font-semibold text-fg text-sm">AI Wish Limit Reached</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {backendErr?.message || "You've used all the AI wishes included in your current plan. Upgrade to generate more personalized greetings."}
+            </p>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition"
+              >
+                Dismiss
+              </button>
+              <Link
+                to="/subscription"
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs px-3 py-1.5 rounded-md font-semibold bg-primary hover:bg-primary-hover text-white transition flex items-center gap-1 shadow-sm"
+              >
+                Upgrade Plan &rarr;
+              </Link>
+            </div>
+          </div>
+        ), {
+          id: 'ai-wish-limit-toast',
+          duration: 8000,
+          position: 'top-center',
+          style: {
+            background: 'rgba(23, 27, 38, 0.95)',
+            color: '#f8fafc',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '1rem',
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+          },
+        });
+        return;
+      }
+
+      if (status === 401) {
+        toast.error('Session expired. Please sign in again.');
+        return;
+      }
+
+      if (backendErr?.error === 'CONTACT_NOT_FOUND' || (status === 404 && backendErr?.code === 'CONTACT_NOT_FOUND')) {
+        toast.error('The selected contact could not be found. Please refresh your contacts.');
+        return;
+      }
+
+      const msg = backendErr?.message || backendErr?.details
+        ? `${backendErr.error || 'Error'}: ${typeof backendErr.details === 'string' ? backendErr.details : JSON.stringify(backendErr.details)}`
         : backendErr?.error || err.message || 'Generation failed. Check your Gemini API key.';
       toast.error(msg);
     } finally {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
@@ -19,16 +19,36 @@ const LoginPage = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  const { login } = useAuth();
+  const { login, user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const isAdmin =
+        user?.profile?.role === 'admin' ||
+        user?.profile?.role === 'super_admin' ||
+        user?.is_staff ||
+        user?.is_superuser;
+      navigate(isAdmin ? '/admin-dashboard' : '/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password, rememberMe);
+      const loggedUser = await login(email, password, rememberMe);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      const isAdmin =
+        loggedUser?.profile?.role === 'admin' ||
+        loggedUser?.profile?.role === 'super_admin' ||
+        loggedUser?.is_staff ||
+        loggedUser?.is_superuser;
+      if (isAdmin) {
+        navigate('/admin-dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       toast.error(err.message || 'Login failed');
     } finally {

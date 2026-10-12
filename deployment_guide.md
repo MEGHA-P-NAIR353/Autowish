@@ -129,3 +129,46 @@ In Railway production:
   - Root directory: `frontend`
   - Build command: `npm run build`
   - Output directory: `dist`
+
+---
+
+## 4. Render Production Deployment
+
+### Backend Web Service on Render
+When deploying the Django backend to Render, keep in mind:
+- **Local `.env` files are not copied to Render**: Git ignores `.env` files for security. Therefore, all configuration must be entered in the Render Dashboard.
+- **Root Directory**: `backend`
+- **Environment**: Python 3
+- **Build Command**:
+  ```bash
+  pip install -r requirements.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
+  ```
+- **Start Command**:
+  ```bash
+  gunicorn autowish.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
+  ```
+
+### Render Backend Service Environment Variables
+In the Render Dashboard, go to your Backend Web Service -> **Environment** tab, and configure:
+| Variable | Value / Description |
+|---|---|
+| `ADMIN_EMAIL` | Administrator email (e.g. `admin@autowish.ai`) |
+| `ADMIN_PASSWORD` | Strong administrator password |
+| `SECRET_KEY` | 50+ character secure random secret key |
+| `DEBUG` | `False` |
+| `ALLOWED_HOSTS` | `*` (or your `.onrender.com` backend domain) |
+| `CSRF_TRUSTED_ORIGINS` | `https://your-backend.onrender.com,https://your-frontend.onrender.com` |
+| `CORS_ALLOWED_ORIGINS` | `https://your-frontend.onrender.com` |
+| `FRONTEND_URL` | `https://your-frontend.onrender.com` |
+| `DATABASE_URL` | Render PostgreSQL internal connection string |
+| `REDIS_URL` | Render Redis internal connection string |
+| `GEMINI_API_KEY` | Your Google Gemini API Key |
+| `GROQ_API_KEY` | Your Groq API Key |
+| `OPENROUTER_API_KEY` | Your OpenRouter API Key |
+| `EMAIL_HOST_USER` | SMTP sending address |
+| `EMAIL_HOST_PASSWORD` | SMTP app password |
+
+> [!IMPORTANT]
+> **Automatic Administrator Provisioning on Render**:
+> During deployment, when `python manage.py migrate` runs, AutoWish AI's `post_migrate` hook automatically reads `ADMIN_EMAIL` and `ADMIN_PASSWORD` from Render's Environment settings and idempotently creates or verifies the administrator account with `is_staff=True`, `is_superuser=True`, and `super_admin` role.
+> You do NOT need to run manual SSH commands or seeds to create the admin account on Render.

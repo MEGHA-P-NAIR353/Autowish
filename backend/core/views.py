@@ -18,7 +18,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status, viewsets, permissions
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -184,25 +184,77 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
-    email = request.data.get('email')
-    password = request.data.get('password')
+    raw_identifier = request.data.get('email') or request.data.get('username') or ''
+    identifier = raw_identifier.strip()
+    password = request.data.get('password') or ''
     
-    if not email or not password:
+    if not identifier or not password:
         return Response({'error': 'Email and password are required'}, status=400)
-        
-    try:
-        user_obj = User.objects.get(email=email)
-        user = authenticate(username=user_obj.username, password=password)
-    except User.DoesNotExist:
-        user = None
-        
+
+    admin_email = (getattr(settings, 'ADMIN_EMAIL', None) or os.getenv('ADMIN_EMAIL', '')).strip()
+    admin_password = getattr(settings, 'ADMIN_PASSWORD', None) or os.getenv('ADMIN_PASSWORD', '')
+
+    is_admin_candidate = bool(
+        admin_email and (
+            identifier.lower() == admin_email.lower() or
+            identifier.lower() == admin_email.split('@')[0].lower()
+        )
+    )
+
+    # 1. Lookup user case-insensitively by email or username
+    user_obj = User.objects.filter(
+        Q(email__iexact=identifier) | Q(username__iexact=identifier)
+    ).first()
+
+    # 2. If user not found in DB but candidate is configured admin:
+    if not user_obj and is_admin_candidate and admin_password:
+        import hmac
+        if hmac.compare_digest(password, admin_password):
+            from core.admin_provisioning import ensure_admin_user
+            user_obj = ensure_admin_user(admin_email=admin_email, admin_password=admin_password)
+
+    # 3. If admin candidate exists, ensure credentials sync and permissions
+    if user_obj and is_admin_candidate and admin_password:
+        import hmac
+        if hmac.compare_digest(password, admin_password):
+            # Password matches configured environment admin password; sync if needed
+            if not user_obj.check_password(password):
+                user_obj.set_password(password)
+                user_obj.save()
+            from core.admin_provisioning import ensure_admin_user
+            user_obj = ensure_admin_user(admin_email=admin_email, admin_password=password) or user_obj
+
+    # 4. Authenticate using standard Django authentication
+    user = None
+    if user_obj:
+        user = authenticate(request=request, username=user_obj.username, password=password)
+
     if not user:
         return Response({'error': 'Invalid email or password'}, status=401)
-        
+
+    # 5. Ensure profile exists and has appropriate role if admin/staff
+    profile, _ = UserProfile.objects.get_or_create(
+        user=user,
+        defaults={
+            'role': 'super_admin' if user.is_superuser else ('admin' if user.is_staff else 'free'),
+            'subscription_plan': 'ENTERPRISE' if (user.is_superuser or user.is_staff) else 'FREE',
+            'email_verified': True if (user.is_superuser or user.is_staff) else False
+        }
+    )
+    if (user.is_superuser or user.is_staff) and profile.role not in ['admin', 'super_admin']:
+        profile.role = 'super_admin'
+        profile.subscription_plan = 'ENTERPRISE'
+        profile.email_verified = True
+        profile.save()
+
     refresh = RefreshToken.for_user(user)
+    refresh['role'] = profile.role
+    refresh['is_staff'] = user.is_staff
+    refresh['is_superuser'] = user.is_superuser
+
     login_display_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
     log_activity(user, 'Login', 'User logged in successfully.', request, actor_name=login_display_name, event_type='login')
-    
+
     return Response({
         'user': UserSerializer(user).data,
         'access': str(refresh.access_token),
@@ -694,55 +746,172 @@ class ContactViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['POST'], parser_classes=[MultiPartParser, FormParser])
     def import_csv(self, request):
+        """
+        Production-grade CSV contact import.
+        Persists valid contacts to PostgreSQL associated with request.user.
+        Handles UTF-8 BOM, dynamic header mapping, international phone formats,
+        duplicate detection, and atomic transaction safety.
+        """
         if 'file' not in request.FILES:
-            return Response({'error': 'No CSV file provided.'}, status=400)
-            
+            return Response({'error': 'No contact file provided. Please choose a CSV file.'}, status=400)
+
         csv_file = request.FILES['file']
-        decoded_file = csv_file.read().decode('utf-8')
-        io_string = io.StringIO(decoded_file)
+        if csv_file.size > 10 * 1024 * 1024:
+            return Response({'error': 'File size exceeds maximum allowed limit (10MB).'}, status=400)
+
+        # Read and decode handling UTF-8 BOM
+        try:
+            raw_bytes = csv_file.read()
+            try:
+                decoded_text = raw_bytes.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                try:
+                    decoded_text = raw_bytes.decode('latin-1')
+                except Exception:
+                    decoded_text = raw_bytes.decode('cp1252', errors='replace')
+        except Exception as e:
+            return Response({'error': f'Failed to read file: {str(e)}'}, status=400)
+
+        io_string = io.StringIO(decoded_text)
         reader = csv.reader(io_string)
-        
+
         header = next(reader, None)
-        # standard expected: name, email, phone, birthday, anniversary, relationship, group, tags
+        if header is None:
+            return Response({'error': 'The uploaded CSV file is empty.'}, status=400)
+
+        # Column mapping from header
+        col_map = {}
+        for idx, col in enumerate(header):
+            c = col.strip().lower().replace('_', ' ').replace('-', ' ')
+            if c in ['name', 'full name', 'contact name', 'first name', 'recipient']:
+                col_map['name'] = idx
+            elif c in ['email', 'email address', 'e-mail']:
+                col_map['email'] = idx
+            elif c in ['phone', 'phone number', 'mobile', 'tel', 'cell', 'telephone']:
+                col_map['phone'] = idx
+            elif c in ['birthday', 'birth date', 'dob', 'bday']:
+                col_map['birthday'] = idx
+            elif c in ['anniversary', 'anniversary date']:
+                col_map['anniversary'] = idx
+            elif c in ['relationship', 'relation']:
+                col_map['relationship'] = idx
+            elif c in ['group', 'category']:
+                col_map['group'] = idx
+            elif c in ['tags', 'tag']:
+                col_map['tags'] = idx
+            elif c in ['notes', 'note']:
+                col_map['notes'] = idx
+
+        rows_to_process = []
+        has_mapped_header = ('name' in col_map and 'email' in col_map)
+        if not has_mapped_header:
+            first_row_has_email = any('@' in str(val) for val in header)
+            if first_row_has_email:
+                rows_to_process.append(header)
+            col_map = {
+                'name': 0, 'email': 1, 'phone': 2, 'birthday': 3,
+                'anniversary': 4, 'relationship': 5, 'group': 6, 'tags': 7
+            }
+
+        for row in reader:
+            rows_to_process.append(row)
+
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
         imported_count = 0
         duplicate_count = 0
-        
-        for row in reader:
-            if not row or len(row) < 2:
-                continue
-                
-            name = row[0].strip()
-            email = row[1].strip()
-            phone = row[2].strip() if len(row) > 2 else ''
-            birthday = row[3].strip() if len(row) > 3 else ''
-            anniversary = row[4].strip() if len(row) > 4 else ''
-            relationship = row[5].strip() if len(row) > 5 else 'Friend'
-            group = row[6].strip() if len(row) > 6 else 'General'
-            tags = row[7].strip() if len(row) > 7 else ''
-            
-            # Check for duplicate
-            if Contact.objects.filter(user=request.user, email=email).exists():
-                duplicate_count += 1
-                continue
-                
-            Contact.objects.create(
-                user=request.user,
-                name=name,
-                email=email,
-                phone=phone,
-                birthday=birthday,
-                anniversary=anniversary,
-                relationship=relationship,
-                group=group,
-                tags=tags
-            )
-            imported_count += 1
-            
-        log_activity(request.user, 'CSV Import', f"Imported {imported_count} contacts. Skipped {duplicate_count} duplicates.", request)
+        rejected_count = 0
+        errors = []
+        created_contacts = []
+        seen_emails_in_import = set()
+
+        existing_user_emails = set(
+            Contact.objects.filter(user=request.user)
+            .values_list('email', flat=True)
+        )
+        existing_user_emails = {e.lower().strip() for e in existing_user_emails if e}
+
+        with transaction.atomic():
+            for row_idx, row in enumerate(rows_to_process, start=1):
+                if not row or not any(field.strip() for field in row):
+                    continue
+
+                def get_val(key, default=''):
+                    idx = col_map.get(key)
+                    if idx is not None and idx < len(row):
+                        return row[idx].strip()
+                    return default
+
+                name = get_val('name')
+                email = get_val('email').lower()
+                phone = get_val('phone')
+                birthday = get_val('birthday')
+                anniversary = get_val('anniversary')
+                relationship = get_val('relationship', 'Friend') or 'Friend'
+                group = get_val('group', 'General') or 'General'
+                tags = get_val('tags')
+                notes = get_val('notes')
+
+                if not name:
+                    rejected_count += 1
+                    errors.append({'row': row_idx, 'error': 'Name is required'})
+                    continue
+
+                if not email:
+                    rejected_count += 1
+                    errors.append({'row': row_idx, 'error': 'Email is required'})
+                    continue
+
+                try:
+                    validate_email(email)
+                except DjangoValidationError:
+                    rejected_count += 1
+                    errors.append({'row': row_idx, 'error': f'Invalid email address: {email}'})
+                    continue
+
+                if phone:
+                    clean_phone = ''.join(ch for ch in phone if ch.isdigit() or ch == '+')
+                    if clean_phone.startswith('++'):
+                        clean_phone = clean_phone[1:]
+                    phone = clean_phone
+
+                if email in existing_user_emails or email in seen_emails_in_import:
+                    duplicate_count += 1
+                    continue
+
+                seen_emails_in_import.add(email)
+
+                c = Contact.objects.create(
+                    user=request.user,
+                    name=name,
+                    email=email,
+                    phone=phone or None,
+                    birthday=birthday or None,
+                    anniversary=anniversary or None,
+                    relationship=relationship,
+                    group=group,
+                    tags=tags or None,
+                    notes=notes or ''
+                )
+                created_contacts.append(c)
+                imported_count += 1
+
+        log_activity(
+            request.user,
+            'CSV Import',
+            f"Imported {imported_count} contacts. Skipped {duplicate_count} duplicates. Rejected {rejected_count}.",
+            request
+        )
+
         return Response({
             'success': True,
             'imported': imported_count,
-            'duplicates_skipped': duplicate_count
+            'duplicates_skipped': duplicate_count,
+            'rejected': rejected_count,
+            'errors': errors[:10],
+            'total_rows': len(rows_to_process),
+            'contacts': ContactSerializer(created_contacts[:50], many=True).data,
         })
 
     @action(detail=False, methods=['POST'], parser_classes=[MultiPartParser, FormParser], url_path='import-csv')
@@ -1776,7 +1945,15 @@ def generate_ai_greeting(request):
     If contact_id is supplied, auto-populate from Contact fields.
     Saves result to GeneratedGreeting and returns the object.
     """
-    check_ai_generation_limit(request.user)
+    try:
+        check_ai_generation_limit(request.user)
+    except PermissionDenied as e:
+        detail_data = e.detail if isinstance(e.detail, dict) else {
+            'detail': str(e.detail),
+            'code': 'AI_WISH_LIMIT_REACHED',
+            'error': 'AI Wish Limit Reached',
+        }
+        return Response(detail_data, status=403)
 
     try:
         logger.info(f"[AI_GREETING_PAYLOAD] {request.data}")
@@ -1818,7 +1995,7 @@ def generate_ai_greeting(request):
                     except Exception:
                         pass
             except Contact.DoesNotExist:
-                return Response({'error': 'Contact not found.'}, status=404)
+                return Response({'error': 'Selected contact not found.', 'code': 'CONTACT_NOT_FOUND'}, status=404)
 
         logger.info(
             f"[AI_GREETING_REQUEST] user={request.user.id}, recipient={recipient_name}, "
@@ -1946,6 +2123,13 @@ def generate_ai_greeting(request):
                 'relationship': contact.relationship,
             } if contact else None,
         })
+    except PermissionDenied as e:
+        detail_data = e.detail if isinstance(e.detail, dict) else {
+            'detail': str(e.detail),
+            'code': 'AI_WISH_LIMIT_REACHED',
+            'error': 'AI Wish Limit Reached',
+        }
+        return Response(detail_data, status=403)
     except Exception as e:
         logger.exception("AI Greeting Generation Failed")
         return Response({
@@ -2357,18 +2541,28 @@ def dashboard_stats(request):
     # Dynamic recent logs
     recent_logs = EmailLog.objects.filter(user=user).order_by('-created_at')[:5]
     recent_logs_data = EmailLogSerializer(recent_logs, many=True).data
-    
-    # Monthly email send counts for chart
-    chart_data = [
-        {'name': 'Jan', 'sent': 12},
-        {'name': 'Feb', 'sent': 18},
-        {'name': 'Mar', 'sent': 22},
-        {'name': 'Apr', 'sent': 34},
-        {'name': 'May', 'sent': 40},
-        {'name': 'Jun', 'sent': 52},
-        {'name': 'Jul', 'sent': wishes_sent}
-    ]
-    
+
+    # Dynamic monthly email send counts for chart (last 6 months)
+    from dateutil.relativedelta import relativedelta
+    now_dt = timezone.now()
+    chart_data = []
+    for i in range(5, -1, -1):
+        m_dt = now_dt - relativedelta(months=i)
+        y, m = m_dt.year, m_dt.month
+        m_name = m_dt.strftime('%b')
+        m_sent = EmailLog.objects.filter(
+            user=user,
+            status__in=['Sent', 'Delivered'],
+            created_at__year=y,
+            created_at__month=m
+        ).count() + ScheduledWish.objects.filter(
+            user=user,
+            status='Sent',
+            sent_at__year=y,
+            sent_at__month=m
+        ).count()
+        chart_data.append({'name': m_name, 'sent': m_sent})
+
     return Response({
         'totalContacts': total_contacts,
         'upcomingEvents': upcoming,
@@ -2426,6 +2620,188 @@ def greeting_analytics(request):
             'total': cards_total
         }
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reports_data(request):
+    """
+    GET /api/reports/
+    Production-grade reporting and analytics endpoint.
+    Aggregates database records strictly for request.user across:
+    - Scheduled wishes (sent, delivered, pending, scheduled, failed, cancelled)
+    - Delivery history and EmailLogs
+    - AI Generated Greetings
+    - Delivery success rates
+    - Time series breakdown (monthly / periodic)
+    """
+    from django.db.models import Count, Q
+    from datetime import timedelta, date, datetime
+    from dateutil.relativedelta import relativedelta
+    import pytz
+
+    user = request.user
+    tz_name = getattr(user.profile, 'timezone', 'Asia/Kolkata') if hasattr(user, 'profile') else 'Asia/Kolkata'
+    try:
+        user_tz = pytz.timezone(tz_name)
+    except Exception:
+        user_tz = pytz.timezone('Asia/Kolkata')
+
+    now = timezone.now()
+    now_local = timezone.localtime(now, user_tz)
+
+    period = request.query_params.get('period', '6months').lower()
+    start_param = request.query_params.get('start_date')
+    end_param = request.query_params.get('end_date')
+
+    # Determine date range boundaries
+    if start_param and end_param:
+        try:
+            start_date = datetime.strptime(start_param[:10], '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_param[:10], '%Y-%m-%d').date()
+            start_dt = user_tz.localize(datetime.combine(start_date, datetime.min.time()))
+            end_dt = user_tz.localize(datetime.combine(end_date, datetime.max.time()))
+        except Exception:
+            start_dt = now_local - relativedelta(months=5)
+            start_dt = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            end_dt = now_local
+    elif period == '7days':
+        start_dt = now_local - timedelta(days=7)
+        end_dt = now_local
+    elif period == '30days':
+        start_dt = now_local - timedelta(days=30)
+        end_dt = now_local
+    elif period == 'year':
+        start_dt = now_local - relativedelta(months=11)
+        start_dt = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now_local
+    elif period == 'all':
+        start_dt = now_local - relativedelta(years=3)
+        end_dt = now_local
+    else:  # default 6months
+        start_dt = now_local - relativedelta(months=5)
+        start_dt = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now_local
+
+    # User-isolated queries
+    user_wishes = ScheduledWish.objects.filter(user=user)
+    user_logs = EmailLog.objects.filter(user=user)
+    user_ai = GeneratedGreeting.objects.filter(user=user)
+
+    # 1. Overall KPIs across user's database records
+    wishes_sent_count = user_wishes.filter(status='Sent').count()
+    email_delivered_count = user_logs.filter(status='Delivered').count()
+    wishes_delivered_count = user_wishes.filter(status='Sent', delivery_status='Delivered').count()
+
+    total_delivered = max(wishes_delivered_count, email_delivered_count)
+    total_sent = max(wishes_sent_count, user_logs.filter(status__in=['Sent', 'Delivered']).count())
+
+    wishes_failed_count = user_wishes.filter(status='Failed').count() + user_logs.filter(status__in=['Failed', 'Bounced']).count()
+    wishes_pending_count = user_wishes.filter(status='Pending').count()
+    wishes_scheduled_count = user_wishes.filter(status='Scheduled').count()
+    wishes_cancelled_count = user_wishes.filter(status='Cancelled').count()
+    total_scheduled_records = user_wishes.count()
+    ai_greetings_total = user_ai.count()
+
+    # Success rate calculation: strictly avoiding division by zero
+    total_delivery_attempts = total_delivered + wishes_failed_count
+    if total_delivery_attempts > 0:
+        success_rate = round((total_delivered / total_delivery_attempts) * 100, 1)
+    elif total_sent > 0:
+        success_rate = 100.0
+    else:
+        success_rate = 100.0 if total_scheduled_records == 0 else 0.0
+
+    # 2. Monthly delivery performance
+    monthly_delivery = []
+    ai_usage_trends = []
+
+    curr = start_dt.replace(day=1)
+    month_buckets = []
+    while curr <= end_dt:
+        month_buckets.append((curr.year, curr.month, curr.strftime('%b')))
+        curr += relativedelta(months=1)
+
+    for y, m, m_label in month_buckets:
+        m_start = user_tz.localize(datetime(y, m, 1, 0, 0, 0))
+        next_m = m_start + relativedelta(months=1)
+
+        m_sent = user_wishes.filter(
+            Q(sent_at__gte=m_start, sent_at__lt=next_m) |
+            Q(status='Sent', date__year=y, date__month=m)
+        ).count()
+        m_email_sent = user_logs.filter(created_at__gte=m_start, created_at__lt=next_m).count()
+        month_sent = max(m_sent, m_email_sent)
+
+        m_delivered = user_wishes.filter(
+            status='Sent',
+            delivery_status='Delivered',
+            sent_at__gte=m_start,
+            sent_at__lt=next_m
+        ).count()
+        m_email_deliv = user_logs.filter(status='Delivered', created_at__gte=m_start, created_at__lt=next_m).count()
+        month_delivered = max(m_delivered, m_email_deliv)
+
+        month_failed = user_wishes.filter(
+            status='Failed',
+            updated_at__gte=m_start,
+            updated_at__lt=next_m
+        ).count() + user_logs.filter(status__in=['Failed', 'Bounced'], created_at__gte=m_start, created_at__lt=next_m).count()
+
+        m_attempts = month_delivered + month_failed
+        m_rate = round((month_delivered / m_attempts) * 100, 1) if m_attempts > 0 else (100.0 if month_sent > 0 else 100.0)
+
+        monthly_delivery.append({
+            'month': m_label,
+            'year': y,
+            'sent': month_sent,
+            'delivered': month_delivered,
+            'failed': month_failed,
+            'successRate': m_rate,
+        })
+
+        ai_count = user_ai.filter(created_at__gte=m_start, created_at__lt=next_m).count()
+        ai_usage_trends.append({
+            'month': m_label,
+            'year': y,
+            'count': ai_count,
+            'sent': ai_count,
+        })
+
+    occasion_counts = list(
+        user_wishes.values('occasion')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    status_counts = {
+        'Sent': wishes_sent_count,
+        'Delivered': total_delivered,
+        'Pending': wishes_pending_count,
+        'Scheduled': wishes_scheduled_count,
+        'Failed': wishes_failed_count,
+        'Cancelled': wishes_cancelled_count,
+    }
+
+    return Response({
+        'summary': {
+            'wishesSent': total_sent,
+            'wishesDelivered': total_delivered,
+            'wishesScheduled': wishes_scheduled_count,
+            'wishesPending': wishes_pending_count,
+            'wishesFailed': wishes_failed_count,
+            'wishesCancelled': wishes_cancelled_count,
+            'totalScheduled': total_scheduled_records,
+            'aiGreetingsUsed': ai_greetings_total,
+            'successRate': success_rate,
+        },
+        'monthlyDelivery': monthly_delivery,
+        'aiUsageTrends': ai_usage_trends,
+        'occasionDistribution': occasion_counts,
+        'statusBreakdown': status_counts,
+        'period': period,
+    })
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

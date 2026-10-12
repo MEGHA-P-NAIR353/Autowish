@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.utils import timezone
 from .models import (
     UserProfile, Contact, Event, GreetingTemplate, ScheduledWish,
     EmailLog, GeneratedGreeting, AIPrompt, Notification,
@@ -24,7 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name', 'display_name', 'profile']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'full_name', 'display_name', 'is_staff', 'is_superuser', 'profile'
+        ]
+        read_only_fields = ['is_staff', 'is_superuser']
 
     def get_full_name(self, obj):
         name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
@@ -73,11 +78,70 @@ class GreetingTemplateSerializer(serializers.ModelSerializer):
 
 class ScheduledWishSerializer(serializers.ModelSerializer):
     contact = serializers.PrimaryKeyRelatedField(queryset=Contact.objects.all())
+    greeting_card = serializers.PrimaryKeyRelatedField(queryset=GreetingCard.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = ScheduledWish
         fields = '__all__'
         read_only_fields = ['user', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        elif isinstance(data, dict):
+            data = dict(data)
+        if isinstance(data, dict):
+            if data.get('greeting_card') == '' or data.get('greeting_card') == 'null':
+                data['greeting_card'] = None
+            if data.get('contact') == '':
+                data['contact'] = None
+            if data.get('reminder_minutes') == '':
+                data['reminder_minutes'] = 15
+        return super().to_internal_value(data)
+
+    def validate_contact(self, value):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            if value.user != request.user:
+                raise serializers.ValidationError("You cannot schedule wishes for another user's contacts.")
+        return value
+
+    def validate_greeting_card(self, value):
+        if value:
+            request = self.context.get('request')
+            if request and hasattr(request, 'user') and request.user.is_authenticated:
+                if value.user != request.user:
+                    raise serializers.ValidationError("Greeting card does not belong to you.")
+        return value
+
+    def validate(self, attrs):
+        wish_date = attrs.get('date', getattr(self.instance, 'date', None))
+        wish_time = attrs.get('time', getattr(self.instance, 'time', None))
+        tz_name = attrs.get('timezone', getattr(self.instance, 'timezone', 'Asia/Kolkata')) or 'Asia/Kolkata'
+
+        if not wish_date:
+            raise serializers.ValidationError({"date": "Scheduled date is required."})
+        if not wish_time:
+            from datetime import time as dt_time
+            wish_time = dt_time(9, 0)
+            attrs['time'] = wish_time
+
+        # Validate future only for new wishes or when date/time is modified
+        if self.instance is None or 'date' in attrs or 'time' in attrs:
+            import pytz
+            from datetime import datetime as dt_cls
+            naive_dt = dt_cls.combine(wish_date, wish_time)
+            try:
+                tz = pytz.timezone(tz_name)
+                aware_dt = tz.localize(naive_dt)
+            except Exception:
+                tz = pytz.timezone('Asia/Kolkata')
+                aware_dt = tz.localize(naive_dt)
+
+            if aware_dt <= timezone.localtime(timezone.now(), tz):
+                raise serializers.ValidationError({"date": "Scheduled date and time must be in the future."})
+
+        return attrs
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
