@@ -20,14 +20,41 @@ import {
 } from '../components/ui';
 import EmptyState from '../components/common/EmptyState';
 
-const OCCASIONS = ['All', 'Birthday', 'Anniversary', 'Festival', 'Holiday', 'Custom'];
-const TONES = ['All', 'Friendly', 'Professional', 'Funny', 'Romantic', 'Formal', 'Heartfelt', 'Inspiring'];
+const OCCASIONS = [
+  'All',
+  'Birthday',
+  'Anniversary',
+  'Festival',
+  'Holiday',
+  'Heartfelt',
+  'Wedding',
+  'Custom',
+];
+const TONES = [
+  'All',
+  'Friendly',
+  'Romantic',
+  'Professional',
+  'Funny',
+  'Heartfelt',
+  'Formal',
+  'Inspiring',
+  'Warm',
+];
 const LANGUAGES = [
   { code: 'All', label: 'All Languages' },
   { code: 'en', label: 'English (en)' },
   { code: 'es', label: 'Spanish (es)' },
   { code: 'fr', label: 'French (fr)' },
+  { code: 'de', label: 'German (de)' },
   { code: 'hi', label: 'Hindi (hi)' },
+  { code: 'ta', label: 'Tamil (ta)' },
+  { code: 'te', label: 'Telugu (te)' },
+  { code: 'kn', label: 'Kannada (kn)' },
+  { code: 'ml', label: 'Malayalam (ml)' },
+  { code: 'ar', label: 'Arabic (ar)' },
+  { code: 'ja', label: 'Japanese (ja)' },
+  { code: 'zh', label: 'Chinese (zh)' },
 ];
 
 const Templates = () => {
@@ -161,15 +188,19 @@ const Templates = () => {
   };
 
   // Generate personalized message text
-  const getPersonalizedMessage = (rawText, nameVal, relVal, occVal) => {
+  const getPersonalizedMessage = (rawText, nameVal, relVal, occVal, senderVal, ageVal) => {
     if (!rawText) return '';
     const safeName = (nameVal ?? '').toString().trim() || 'Friend';
     const safeRel = (relVal ?? '').toString().trim() || 'Friend';
     const safeOcc = (occVal ?? '').toString().trim() || 'Special Occasion';
+    const safeSender = (senderVal ?? '').toString().trim() || 'Your Friend';
+    const safeAge = (ageVal ?? '').toString().trim() || 'Milestone';
     return String(rawText)
       .replace(/\{\{\s*name\s*\}\}|\{name\}/gi, safeName)
       .replace(/\{\{\s*relationship\s*\}\}|\{relationship\}/gi, safeRel)
-      .replace(/\{\{\s*occasion\s*\}\}|\{occasion\}/gi, safeOcc);
+      .replace(/\{\{\s*occasion\s*\}\}|\{occasion\}/gi, safeOcc)
+      .replace(/\{\{\s*sender\s*\}\}|\{sender\}/gi, safeSender)
+      .replace(/\{\{\s*age\s*\}\}|\{age\}/gi, safeAge);
   };
 
   // Copy personalized text
@@ -193,7 +224,7 @@ const Templates = () => {
 
   const hasPlaceholders = (text) => {
     if (!text) return false;
-    return /\{\{\s*(name|relationship|occasion)\s*\}\}|\{(name|relationship|occasion)\}/i.test(text);
+    return /\{\{\s*(name|relationship|occasion|sender|age)\s*\}\}|\{(name|relationship|occasion|sender|age)\}/i.test(text);
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);

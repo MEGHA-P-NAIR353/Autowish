@@ -91,17 +91,21 @@ export const GlassStatCard = ({
   </motion.div>
 );
 
-export const PageHeader = ({ title, subtitle, icon: Icon, actions, className }) => (
-  <div className={cx('flex flex-wrap items-center justify-between gap-4 mb-8', className)}>
-    <div className="flex items-center gap-3 min-w-0">
-      {Icon && (
-        <span className="stat-icon stat-accent-indigo hidden sm:inline-flex" aria-hidden="true"><Icon size={20} /></span>
-      )}
-      <div className="min-w-0">
-        <h1 className="text-2xl sm:text-3xl font-bold text-fg tracking-tight">{title}</h1>
-        {subtitle && <p className="text-sm text-slate-400 mt-1">{subtitle}</p>}
+export const PageHeader = ({ title, subtitle, description, icon: Icon, actions, action, className }) => {
+  const sub = subtitle || description;
+  const act = actions || action;
+  return (
+    <div className={cx('flex flex-wrap items-center justify-between gap-4 mb-8', className)}>
+      <div className="flex items-center gap-3 min-w-0">
+        {Icon && (
+          <span className="stat-icon stat-accent-indigo hidden sm:inline-flex" aria-hidden="true"><Icon size={20} /></span>
+        )}
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-fg tracking-tight">{title}</h1>
+          {sub && <p className="text-sm text-slate-400 mt-1">{sub}</p>}
+        </div>
       </div>
+      {act && <div className="flex flex-wrap items-center gap-3">{act}</div>}
     </div>
-    {actions && <div className="flex flex-wrap items-center gap-3">{actions}</div>}
-  </div>
-);
+  );
+};
