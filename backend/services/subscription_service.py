@@ -142,3 +142,37 @@ def user_has_feature(user, feature_key):
     plan_id = get_user_plan_id(user)
     flags = get_plan_definition(plan_id).get('feature_flags', {})
     return flags.get(feature_key, False)
+
+
+def user_can_attach_greeting_cards(user):
+    """
+    Check if a user is entitled to attach greeting cards to scheduled wishes.
+    Superusers, staff, and roles in ('super_admin', 'admin', 'premium') are always entitled.
+    Otherwise, entitlement is determined by the 'attach_greeting_cards' feature flag on their plan.
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        return True
+    if hasattr(user, 'profile'):
+        role = getattr(user.profile, 'role', 'free')
+        if role in ('super_admin', 'admin', 'premium'):
+            return True
+        plan_id = getattr(user.profile, 'subscription_plan', 'FREE') or 'FREE'
+        if plan_id in ('PRO', 'BUSINESS', 'ENTERPRISE'):
+            return True
+    return user_has_feature(user, 'attach_greeting_cards')
+
+
+def check_greeting_card_attachment_allowed(user):
+    """
+    Raise PermissionDenied if the user's subscription does not entitle them
+    to attach greeting cards to scheduled wishes.
+    """
+    if not user_can_attach_greeting_cards(user):
+        raise PermissionDenied({
+            'detail': 'Attaching greeting cards to scheduled wishes is a premium feature. Please upgrade your plan to attach greeting cards.',
+            'code': 'PLAN_FEATURE_NOT_AVAILABLE',
+            'feature': 'attach_greeting_cards',
+        })
+

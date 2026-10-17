@@ -31,10 +31,36 @@ def _build_card_email(wish, contact, subject, message_body):
     if wish.greeting_card_id:
         try:
             card = wish.greeting_card
-            if card and card.preview_image:
-                with card.preview_image.open('rb') as f:
-                    card_image_data = f.read()
-                has_card_image = True
+            if card and card.status == 'published':
+                if not card.preview_image:
+                    try:
+                        from core.card_generator import generate_card_preview
+                        generate_card_preview(card, save=True)
+                        card.refresh_from_db()
+                    except Exception as gen_err:
+                        logger.warning(f"Could not generate card preview for wish {wish.id}: {gen_err}")
+
+                if card.preview_image:
+                    try:
+                        with card.preview_image.open('rb') as f:
+                            card_image_data = f.read()
+                        has_card_image = True
+
+                        # Diagnostic logging for scheduled delivery
+                        try:
+                            import io
+                            from PIL import Image
+                            with Image.open(io.BytesIO(card_image_data)) as pil_img:
+                                logger.info(
+                                    f"[tasks._build_card_email] Loaded card {card.id} for wish {wish.id}: "
+                                    f"dimensions={pil_img.size[0]}x{pil_img.size[1]}, format={pil_img.format}, bytes={len(card_image_data)}"
+                                )
+                        except Exception as log_err:
+                            logger.warning(f"[tasks._build_card_email] Could not inspect image info for wish {wish.id}: {log_err}")
+                    except Exception as file_read_err:
+                        logger.warning(f"Could not read preview image file for card {card.id} on wish {wish.id}: {file_read_err}")
+            elif card and card.status != 'published':
+                logger.info(f"Skipping greeting card {card.id} for wish {wish.id} because status is '{card.status}' (not published).")
         except Exception as e:
             logger.warning(f"Could not load greeting card image for wish {wish.id}: {e}")
 
@@ -51,7 +77,7 @@ def _build_card_email(wish, contact, subject, message_body):
     .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; }}
     .header h1 {{ color: white; margin: 0; font-size: 24px; letter-spacing: 1px; }}
     .card-image {{ padding: 20px; text-align: center; background: #f0f4ff; }}
-    .card-image img {{ max-width: 100%; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); }}
+    .card-image img {{ max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); }}
     .message {{ padding: 30px; color: #333; line-height: 1.8; font-size: 15px; white-space: pre-wrap; }}
     .footer {{ background: #f8f8f8; padding: 20px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee; }}
     .sent-by {{ color: #667eea; font-weight: bold; }}
@@ -63,7 +89,7 @@ def _build_card_email(wish, contact, subject, message_body):
       <h1>🎉 {wish.occasion} Wishes</h1>
     </div>
     <div class="card-image">
-      <img src="cid:greetingcard" alt="Greeting Card" />
+      <img src="cid:greetingcard" alt="Greeting Card" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
     </div>
     <div class="message">{message_body}</div>
     <div class="footer">

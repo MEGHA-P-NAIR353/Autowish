@@ -18,6 +18,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status, viewsets, permissions
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -31,7 +32,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import (
-    Contact, Event, GreetingTemplate, ScheduledWish, EmailLog,
+    Contact, Event, GreetingTemplate, WishTemplate, ScheduledWish, EmailLog,
     GeneratedGreeting, UserProfile, AIPrompt, Notification,
     SubscriptionTransaction, AuditLog, ActivityLog,
     GreetingCardTemplate, GreetingCard, GreetingCardFavorite,
@@ -40,6 +41,7 @@ from .models import (
 import traceback
 from .serializers import (
     ContactSerializer, EventSerializer, GreetingTemplateSerializer,
+    WishTemplateSerializer, AdminWishTemplateSerializer,
     ScheduledWishSerializer, EmailLogSerializer, GeneratedGreetingSerializer,
     UserSerializer, UserProfileSerializer, ProfileUpdateSerializer, AIPromptSerializer, AIGenerateRequestSerializer,
     NotificationSerializer, SubscriptionTransactionSerializer, AuditLogSerializer,
@@ -1402,6 +1404,300 @@ class EventViewSet(viewsets.ModelViewSet):
 
 # --- TEMPLATE VIEWSET ---
 
+class WishTemplatePagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class WishTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = WishTemplateSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = WishTemplatePagination
+
+    def get_queryset(self):
+        # Published templates + user's own created templates (if authenticated)
+        if self.request.user.is_authenticated:
+            qs = WishTemplate.objects.filter(is_published=True, status='published') | WishTemplate.objects.filter(created_by=self.request.user)
+        else:
+            qs = WishTemplate.objects.filter(is_published=True, status='published')
+        qs = qs.prefetch_related('favorite_users').order_by('-created_at').distinct()
+        
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        if search:
+            search = search.strip()
+            qs = qs.filter(Q(name__icontains=search) | Q(message__icontains=search))
+            
+        occasion = self.request.query_params.get('occasion')
+        if occasion and occasion.lower() != 'all':
+            qs = qs.filter(occasion__iexact=occasion.strip())
+            
+        tone = self.request.query_params.get('tone')
+        if tone and tone.lower() != 'all':
+            qs = qs.filter(tone__iexact=tone.strip())
+            
+        language = self.request.query_params.get('language')
+        if language and language.lower() != 'all':
+            qs = qs.filter(language__iexact=language.strip())
+            
+        favorites_only = self.request.query_params.get('favorites_only') or self.request.query_params.get('is_favorite')
+        if favorites_only is not None and str(favorites_only).lower() in ['true', '1', 'yes']:
+            qs = qs.filter(favorite_users=self.request.user)
+            
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        is_admin = IsAdminOrSuperAdmin().has_permission(request, self)
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Non-admins cannot publish system templates directly; saved as personal draft
+        if not is_admin:
+            data['status'] = 'draft'
+            data['is_published'] = False
+
+        serializer = AdminWishTemplateSerializer(data=data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        template = serializer.save(created_by=request.user)
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_CREATED',
+            title=f"Template created: {template.name}",
+            entity_type='greeting_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'occasion': template.occasion}
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        template_in_db = WishTemplate.objects.filter(pk=pk).first()
+        if not template_in_db:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_admin = IsAdminOrSuperAdmin().has_permission(request, self)
+        
+        # Prevent users from modifying another user's or administrator's templates
+        if not is_admin and template_in_db.created_by != request.user:
+            return Response(
+                {'detail': "You do not have permission to modify another user's or administrator's template."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        instance = template_in_db
+        partial = kwargs.pop('partial', False)
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Non-admins cannot toggle published status
+        if not is_admin:
+            data.pop('is_published', None)
+            data.pop('status', None)
+
+        serializer = AdminWishTemplateSerializer(instance, data=data, partial=partial, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        template = serializer.save()
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Template updated: {template.name}",
+            entity_type='greeting_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'occasion': template.occasion}
+        )
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Allow regular users to update their personal favorite status
+        if set(request.data.keys()) == {'is_favorite'}:
+            instance = self.get_object()
+            fav_val = bool(request.data.get('is_favorite'))
+            if fav_val:
+                instance.favorite_users.add(request.user)
+            else:
+                instance.favorite_users.remove(request.user)
+            return Response({'id': instance.id, 'is_favorite': fav_val})
+        return self.update(request, *args, partial=True, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        template_in_db = WishTemplate.objects.filter(pk=pk).first()
+        if not template_in_db:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_admin = IsAdminOrSuperAdmin().has_permission(request, self)
+        
+        # Prevent users from deleting another user's or administrator's templates
+        if not is_admin and template_in_db.created_by != request.user:
+            return Response(
+                {'detail': "You do not have permission to delete another user's or administrator's template."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        instance = template_in_db
+        name = instance.name
+        tpl_id = instance.id
+        instance.delete()
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Template deleted: {name}",
+            entity_type='greeting_template',
+            entity_id=tpl_id,
+            metadata={'template_name': name}
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['POST'])
+    def toggle_favorite(self, request, pk=None):
+        template = self.get_object()
+        user = request.user
+        if template.favorite_users.filter(id=user.id).exists():
+            template.favorite_users.remove(user)
+            is_fav = False
+        else:
+            template.favorite_users.add(user)
+            is_fav = True
+        return Response({'id': template.id, 'is_favorite': is_fav, 'message': 'Favorite status updated.'})
+
+
+class AdminWishTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = AdminWishTemplateSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
+    pagination_class = WishTemplatePagination
+
+    def get_queryset(self):
+        qs = WishTemplate.objects.all().select_related('created_by').prefetch_related('favorite_users').order_by('-created_at')
+        
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        if search:
+            search = search.strip()
+            qs = qs.filter(Q(name__icontains=search) | Q(message__icontains=search))
+            
+        occasion = self.request.query_params.get('occasion')
+        if occasion and occasion.lower() != 'all':
+            qs = qs.filter(occasion__iexact=occasion.strip())
+            
+        tone = self.request.query_params.get('tone')
+        if tone and tone.lower() != 'all':
+            qs = qs.filter(tone__iexact=tone.strip())
+            
+        language = self.request.query_params.get('language')
+        if language and language.lower() != 'all':
+            qs = qs.filter(language__iexact=language.strip())
+            
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.lower() != 'all':
+            qs = qs.filter(status__iexact=status_param.strip())
+            
+        is_published = self.request.query_params.get('is_published')
+        if is_published is not None:
+            qs = qs.filter(is_published=(is_published.lower() in ['true', '1', 'yes']))
+            
+        return qs
+
+    def perform_create(self, serializer):
+        template = serializer.save(created_by=self.request.user)
+        create_activity(
+            user=self.request.user,
+            action_type='TEMPLATE_CREATED',
+            title=f"Wish template created: {template.name}",
+            entity_type='wish_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'occasion': template.occasion, 'status': template.status}
+        )
+
+    def perform_update(self, serializer):
+        template = serializer.save()
+        create_activity(
+            user=self.request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Wish template updated: {template.name}",
+            entity_type='wish_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'occasion': template.occasion, 'status': template.status}
+        )
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        tpl_id = instance.id
+        instance.delete()
+        create_activity(
+            user=self.request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Wish template deleted: {name}",
+            entity_type='wish_template',
+            entity_id=tpl_id,
+            metadata={'template_name': name}
+        )
+
+    @action(detail=True, methods=['POST'])
+    def publish(self, request, pk=None):
+        template = self.get_object()
+        template.status = 'published'
+        template.is_published = True
+        template.save(update_fields=['status', 'is_published', 'updated_at'])
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Wish template published: {template.name}",
+            entity_type='wish_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'status': 'published'}
+        )
+        serializer = self.get_serializer(template)
+        return Response({'message': f"Template '{template.name}' is now published.", 'template': serializer.data})
+
+    @action(detail=True, methods=['POST'])
+    def unpublish(self, request, pk=None):
+        template = self.get_object()
+        template.status = 'draft'
+        template.is_published = False
+        template.save(update_fields=['status', 'is_published', 'updated_at'])
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Wish template unpublished: {template.name}",
+            entity_type='wish_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'status': 'draft'}
+        )
+        serializer = self.get_serializer(template)
+        return Response({'message': f"Template '{template.name}' is now draft/unpublished.", 'template': serializer.data})
+
+    @action(detail=True, methods=['POST'])
+    def toggle_publish(self, request, pk=None):
+        template = self.get_object()
+        if template.is_published:
+            template.status = 'draft'
+            template.is_published = False
+        else:
+            template.status = 'published'
+            template.is_published = True
+        template.save(update_fields=['status', 'is_published', 'updated_at'])
+        create_activity(
+            user=request.user,
+            action_type='TEMPLATE_UPDATED',
+            title=f"Wish template status changed: {template.name} ({template.status})",
+            entity_type='wish_template',
+            entity_id=template.id,
+            metadata={'template_name': template.name, 'status': template.status}
+        )
+        serializer = self.get_serializer(template)
+        return Response({'is_published': template.is_published, 'status': template.status, 'template': serializer.data})
+
+    @action(detail=False, methods=['GET'])
+    def stats(self, request):
+        total = WishTemplate.objects.count()
+        published = WishTemplate.objects.filter(is_published=True).count()
+        drafts = WishTemplate.objects.filter(status='draft').count()
+        archived = WishTemplate.objects.filter(status='archived').count()
+        return Response({
+            'total': total,
+            'published': published,
+            'drafts': drafts,
+            'archived': archived
+        })
+
+
 class GreetingTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = GreetingTemplateSerializer
     permission_classes = [IsAuthenticated]
@@ -1466,6 +1762,9 @@ class ScheduledWishViewSet(viewsets.ModelViewSet):
         check_scheduled_wish_limit(self.request.user)
         notification_type = self.request.data.get('notification_type', 'Email')
         check_delivery_channel(self.request.user, notification_type)
+        if self.request.data.get('greeting_card'):
+            from services.subscription_service import check_greeting_card_attachment_allowed
+            check_greeting_card_attachment_allowed(self.request.user)
         wish = serializer.save(user=self.request.user, status='Pending')
         create_activity(
             user=self.request.user,
@@ -1480,6 +1779,9 @@ class ScheduledWishViewSet(viewsets.ModelViewSet):
         notification_type = self.request.data.get('notification_type')
         if notification_type:
             check_delivery_channel(self.request.user, notification_type)
+        if self.request.data.get('greeting_card'):
+            from services.subscription_service import check_greeting_card_attachment_allowed
+            check_greeting_card_attachment_allowed(self.request.user)
         wish = serializer.save()
         create_activity(
             user=self.request.user,
@@ -1631,6 +1933,9 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         check_scheduled_wish_limit(self.request.user)
         notification_type = data.get('notification_type', 'Email')
         check_delivery_channel(self.request.user, notification_type)
+        if data.get('greeting_card'):
+            from services.subscription_service import check_greeting_card_attachment_allowed
+            check_greeting_card_attachment_allowed(self.request.user)
             
         # Save initial schedule status strictly as Pending. Never send immediately!
         wish = serializer.save(user=self.request.user, status='Pending')
@@ -1688,6 +1993,9 @@ class SchedulesViewSet(viewsets.ModelViewSet):
         notification_type = data.get('notification_type')
         if notification_type:
             check_delivery_channel(self.request.user, notification_type)
+        if data.get('greeting_card'):
+            from services.subscription_service import check_greeting_card_attachment_allowed
+            check_greeting_card_attachment_allowed(self.request.user)
             
         wish = serializer.save()
 
@@ -2280,6 +2588,18 @@ def schedule_greeting(request):
     if aware_dt <= timezone.localtime(timezone.now(), user_tz):
         return Response({'error': 'Scheduled date and time must be in the future.'}, status=400)
 
+    card_id = request.data.get('greeting_card') or request.data.get('greeting_card_id')
+    card = None
+    if card_id:
+        from services.subscription_service import check_greeting_card_attachment_allowed
+        check_greeting_card_attachment_allowed(request.user)
+        try:
+            card = GreetingCard.objects.get(pk=card_id, user=request.user)
+            if card.status != 'published':
+                return Response({'error': 'Only published greeting cards can be attached to scheduled wishes.'}, status=400)
+        except GreetingCard.DoesNotExist:
+            return Response({'error': 'Greeting card not found or access denied.'}, status=404)
+
     wish = ScheduledWish.objects.create(
         user=request.user,
         contact=contact,
@@ -2289,6 +2609,7 @@ def schedule_greeting(request):
         message=greeting_text,
         timezone=tz,
         reminder_minutes=reminder_minutes,
+        greeting_card=card,
         status='Pending',
     )
 
@@ -3009,7 +3330,16 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
         return GreetingCardSerializer
 
     def get_queryset(self):
-        qs = GreetingCard.objects.filter(user=self.request.user)
+        user = self.request.user
+        is_admin = (
+            user.is_superuser
+            or user.is_staff
+            or (hasattr(user, 'profile') and user.profile.role in ['admin', 'super_admin'])
+        )
+        if is_admin:
+            qs = GreetingCard.objects.all()
+        else:
+            qs = GreetingCard.objects.filter(user=user)
         status_filter = self.request.query_params.get('status')
         occasion = self.request.query_params.get('occasion')
         search = self.request.query_params.get('search')
@@ -3161,24 +3491,76 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='save-preview')
     def save_preview(self, request, pk=None):
-        """Accept a base64 PNG preview from the frontend and store it."""
+        """Accept an authoritative base64 PNG preview from the frontend, validate, and store it."""
         import base64
+        import io
+        from PIL import Image as PILImage
         from django.core.files.base import ContentFile
+
         card = self.get_object()
-        preview_data = request.data.get('preview_base64')
+        preview_data = request.data.get('preview_base64') or request.data.get('image_data')
         if not preview_data:
-            return Response({'error': 'No preview data.'}, status=400)
+            return Response({'error': 'No preview data provided.'}, status=400)
+
         try:
             # Strip data URL prefix if present
             if ',' in preview_data:
                 preview_data = preview_data.split(',', 1)[1]
             img_bytes = base64.b64decode(preview_data)
-            filename = f'greeting_cards/previews/{card.id}_preview.png'
+        except Exception as decode_err:
+            logger.warning(f"Failed to decode base64 preview for card {card.id}: {decode_err}")
+            return Response({'error': 'Invalid base64 image data.'}, status=400)
+
+        # Enforce upload size limit (max 10 MB)
+        if len(img_bytes) > MAX_IMAGE_SIZE:
+            logger.warning(f"Card {card.id} preview size exceeds limit: {len(img_bytes)} bytes")
+            return Response({'error': 'Image exceeds 10 MB limit.'}, status=400)
+
+        # Validate image integrity with PIL
+        try:
+            img_io = io.BytesIO(img_bytes)
+            with PILImage.open(img_io) as im:
+                im.verify()
+                img_format = (im.format or 'PNG').upper()
+                img_width, img_height = im.size
+
+            # Re-open for mode/dimension confirmation since verify() invalidates the stream
+            img_io.seek(0)
+            with PILImage.open(img_io) as im:
+                img_mode = im.mode
+                img_width, img_height = im.size
+
+            if img_format not in ('PNG', 'JPEG', 'JPG', 'WEBP'):
+                return Response({'error': f'Unsupported image format: {img_format}'}, status=400)
+
+            if img_width < 100 or img_height < 100 or img_width > 4000 or img_height > 4000:
+                logger.warning(f"Card {card.id} preview dimensions out of bounds: {img_width}x{img_height}")
+                return Response({'error': f'Invalid image dimensions: {img_width}x{img_height}'}, status=400)
+
+        except Exception as val_err:
+            logger.warning(f"Card {card.id} image integrity validation failed: {val_err}")
+            return Response({'error': 'Corrupt or unreadable image data.'}, status=400)
+
+        try:
+            filename = f'{card.id}_preview.png'
             card.preview_image.save(filename, ContentFile(img_bytes), save=True)
             url = request.build_absolute_uri(card.preview_image.url)
-            return Response({'preview_image_url': url})
+
+            logger.info(
+                f"[CardPreview] Stored authoritative image for card {card.id} ('{card.title}'): "
+                f"dimensions={img_width}x{img_height}, format={img_format}, mode={img_mode}, "
+                f"size={len(img_bytes)} bytes, path={card.preview_image.name}"
+            )
+
+            return Response({
+                'preview_image_url': url,
+                'width': img_width,
+                'height': img_height,
+                'size': len(img_bytes),
+                'format': img_format,
+            })
         except Exception as e:
-            logger.error(f"Card preview save failed: {e}")
+            logger.error(f"Card preview save failed for card {card.id}: {e}")
             return Response({'error': 'Preview save failed.'}, status=500)
 
     @action(detail=True, methods=['get'], url_path='export')
@@ -3190,6 +3572,15 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
             fmt = 'png'
 
         safe_title = "".join(c for c in (card.title or 'greeting-card') if c.isalnum() or c in (' ', '_', '-')).strip() or 'greeting-card'
+
+        # Ensure preview image exists via authoritative PIL generator if missing
+        if not card.preview_image:
+            try:
+                from core.card_generator import generate_card_preview
+                generate_card_preview(card, save=True)
+                card.refresh_from_db()
+            except Exception as gen_err:
+                logger.warning(f"Fallback card preview generation failed in export_card: {gen_err}")
 
         if card.preview_image:
             try:
@@ -3223,54 +3614,109 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
                 logger.error(f"Error reading card preview image: {e}")
                 return Response({'error': 'Failed to read card preview file.'}, status=500)
 
-        return Response({'error': 'No preview image generated yet. Please open the editor to generate a preview.'}, status=404)
+        return Response({'error': 'No preview image available for this card.'}, status=404)
 
     @action(detail=True, methods=['post'], url_path='send')
     def send_card(self, request, pk=None):
-        """Send greeting card to selected contact via email."""
+        """Send greeting card to selected contact via email with authoritative image."""
         from django.core.mail import EmailMultiAlternatives
-        from django.core.mail import send_mail
+        from email.mime.image import MIMEImage
+        import io
+        from PIL import Image as PILImage
 
         card = self.get_object()
-        
+
         # Validate contact selected and has email
         contact_id = request.data.get('contact_id')
         if not contact_id:
             return Response({'error': 'No contact selected.'}, status=400)
-        
+
         try:
             contact = Contact.objects.get(pk=contact_id, user=request.user)
         except Contact.DoesNotExist:
             return Response({'error': 'Contact not found.'}, status=404)
-        
+
         if not contact.email:
             return Response({'error': 'Contact has no email address.'}, status=400)
-        
+
         # Update card's contact and recipient name
         card.contact = contact
         card.recipient_name = contact.name
         card.status = 'published'
         card.save()
-        
+
+        # Ensure authoritative preview image exists; generate on the fly if missing
+        if not card.preview_image:
+            try:
+                from core.card_generator import generate_card_preview
+                generate_card_preview(card, save=True)
+                card.refresh_from_db()
+                logger.info(f"[send_card] Generated on-demand authoritative preview for card {card.id}")
+            except Exception as gen_err:
+                logger.warning(f"[send_card] On-demand card preview generation failed for card {card.id}: {gen_err}")
+
+        # Load authoritative preview image
+        has_card_image = False
+        card_image_data = None
+        img_info = "None"
+        if card.preview_image:
+            try:
+                with card.preview_image.open('rb') as f:
+                    card_image_data = f.read()
+
+                try:
+                    with PILImage.open(io.BytesIO(card_image_data)) as im:
+                        img_info = f"{im.width}x{im.height} {im.format} ({len(card_image_data)} bytes)"
+                except Exception:
+                    img_info = f"{len(card_image_data)} bytes"
+
+                has_card_image = True
+                logger.info(f"[send_card] Card {card.id} ('{card.title}') authoritative image ready: {card.preview_image.name}, info={img_info}")
+            except Exception as attach_err:
+                logger.warning(f"Greeting card preview load failed for card {card.id}: {attach_err}")
+
         # Prepare email
-        subject = "A Special Greeting from AutoWish AI"
+        subject = f"A Special {card.occasion or 'Greeting'} for {contact.name} from AutoWish AI"
+        recipient_display = contact.name or "Friend"
         html_content = f"""
         <!DOCTYPE html>
         <html>
-        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-            <div style="padding: 20px; background: #f5f5f5; border-radius: 8px;">
-                <h2 style="color: #4f46e5;">Hello {contact.name}!</h2>
-                <p>You've received a personalized greeting card!</p>
-                <p style="color: #6b7280;">With warm regards,<br>AutoWish AI</p>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {{ font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }}
+            .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }}
+            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 28px; text-align: center; }}
+            .header h1 {{ color: white; margin: 0; font-size: 22px; }}
+            .card-image {{ padding: 20px; text-align: center; background: #f0f4ff; }}
+            .card-image img {{ max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); display: inline-block; }}
+            .message {{ padding: 24px; color: #333; line-height: 1.6; font-size: 15px; }}
+            .footer {{ background: #f8f8f8; padding: 18px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee; }}
+            .sent-by {{ color: #667eea; font-weight: bold; }}
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 A Special {card.occasion or 'Greeting'} for {recipient_display}</h1>
             </div>
+            {"<div class='card-image'><img src='cid:greetingcard' alt='Greeting Card' /></div>" if has_card_image else ""}
+            <div class="message">
+              <p>Hello <strong>{recipient_display}</strong>,</p>
+              <p>You have received a personalized greeting card from <strong>AutoWish AI</strong>!</p>
+              <p style="color: #6b7280; margin-top: 16px;">With warm regards,<br>AutoWish AI</p>
+            </div>
+            <div class="footer">
+              Sent with ❤️ via <span class="sent-by">Auto-Wish AI</span>
+            </div>
+          </div>
         </body>
         </html>
         """
-        
-        text_content = f"""Hello {contact.name},\n\nYou've received a personalized greeting card!\n\nWith warm regards,\nAutoWish AI"""
-        
+
+        text_content = f"""Hello {recipient_display},\n\nYou've received a personalized greeting card!\n\nWith warm regards,\nAutoWish AI"""
+
         try:
-            # Send email with preview as attachment
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=text_content,
@@ -3278,21 +3724,24 @@ class GreetingCardViewSet(viewsets.ModelViewSet):
                 to=[contact.email]
             )
             email.attach_alternative(html_content, "text/html")
-            
-            # Attach preview image if available
-            if card.preview_image:
-                try:
-                    with card.preview_image.open('rb') as f:
-                        email.attach(f"{card.title}.png", f.read(), 'image/png')
-                except Exception as attach_err:
-                    logger.warning(f"Greeting card attachment skipped: {attach_err}")
-            
+
+            if has_card_image and card_image_data:
+                # Inline image referencing cid:greetingcard
+                mime_image = MIMEImage(card_image_data)
+                mime_image.add_header('Content-ID', '<greetingcard>')
+                mime_image.add_header('Content-Disposition', 'inline', filename='greeting_card.png')
+                email.attach(mime_image)
+
+                # Standalone attachment
+                safe_card_title = "".join(c for c in (card.title or 'greeting_card') if c.isalnum() or c in (' ', '_', '-')).strip() or 'greeting_card'
+                email.attach(f"{safe_card_title}.png", card_image_data, 'image/png')
+
             email.send(fail_silently=False)
+            logger.info(f"[send_card] Dispatched email to {contact.email} with card {card.id}. Attached={has_card_image}, Info={img_info}")
         except Exception as e:
-            # Surface the REAL error — do not hide it behind a generic message.
             err_type = type(e).__name__
             err_msg = str(e)
-            logger.error(f"send_card email FAILED [{err_type}]: {err_msg}")
+            logger.error(f"[send_card] Email FAILED [{err_type}]: {err_msg}")
             return Response({
                 'error': f'Email send failed: {err_type}',
                 'detail': err_msg,

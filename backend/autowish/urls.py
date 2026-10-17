@@ -8,6 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.views import (
     ContactViewSet, EventViewSet, GreetingTemplateViewSet,
+    WishTemplateViewSet, AdminWishTemplateViewSet,
     ScheduledWishViewSet, SchedulesViewSet, EmailLogViewSet, NotificationViewSet,
     AIPromptViewSet, AuditLogViewSet, AdminUserViewSet,
     register, login_view, verify_email, forgot_password, verify_reset_otp, reset_password,
@@ -25,11 +26,12 @@ from core.views import (
 router = DefaultRouter()
 router.register(r'contacts', ContactViewSet, basename='contacts')
 router.register(r'events', EventViewSet, basename='events')
-router.register(r'templates', GreetingTemplateViewSet, basename='templates')
+router.register(r'templates', WishTemplateViewSet, basename='templates')
 router.register(r'scheduled', ScheduledWishViewSet, basename='scheduled')
 router.register(r'schedules', SchedulesViewSet, basename='schedules')
 router.register(r'logs', EmailLogViewSet, basename='logs')
 router.register(r'notifications', NotificationViewSet, basename='notifications')
+router.register(r'admin/templates', AdminWishTemplateViewSet, basename='admin-templates')
 router.register(r'admin/prompts', AIPromptViewSet, basename='admin-prompts')
 router.register(r'admin/audit-logs', AuditLogViewSet, basename='admin-audit-logs')
 router.register(r'admin/users', AdminUserViewSet, basename='admin-users')

@@ -117,6 +117,71 @@ class GreetingTemplate(models.Model):
     def __str__(self):
         return self.name
 
+class WishTemplate(models.Model):
+    OCCASION_CHOICES = [
+        ('Birthday', 'Birthday'),
+        ('Anniversary', 'Anniversary'),
+        ('Festival', 'Festival'),
+        ('Holiday', 'Holiday'),
+        ('Custom', 'Custom'),
+    ]
+
+    TONE_CHOICES = [
+        ('Friendly', 'Friendly'),
+        ('Professional', 'Professional'),
+        ('Funny', 'Funny'),
+        ('Romantic', 'Romantic'),
+        ('Formal', 'Formal'),
+        ('Heartfelt', 'Heartfelt'),
+        ('Inspiring', 'Inspiring'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
+
+    name = models.CharField(max_length=150, unique=True, db_index=True, help_text="Template title or identifier")
+    message = models.TextField(help_text="Ready-to-use greeting message with optional placeholders like {{name}}")
+    occasion = models.CharField(max_length=50, default='Birthday', choices=OCCASION_CHOICES, db_index=True)
+    tone = models.CharField(max_length=50, default='Friendly', choices=TONE_CHOICES, db_index=True)
+    language = models.CharField(max_length=10, default='en', db_index=True, help_text="Language code, e.g. en, es, fr, hi")
+    status = models.CharField(max_length=20, default='published', choices=STATUS_CHOICES, db_index=True)
+    is_published = models.BooleanField(default=True, db_index=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_wish_templates')
+    favorite_users = models.ManyToManyField(User, blank=True, related_name='favorite_wish_templates')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['is_published', 'occasion']),
+            models.Index(fields=['status', 'occasion']),
+            models.Index(fields=['occasion', 'tone']),
+            models.Index(fields=['language']),
+            models.Index(fields=['created_at']),
+        ]
+        verbose_name = "Wish Template"
+        verbose_name_plural = "Wish Templates"
+
+    def __str__(self):
+        return f"{self.name} ({self.occasion} - {self.status})"
+
+    def save(self, *args, **kwargs):
+        if self.status == 'published':
+            self.is_published = True
+        elif self.status in ['draft', 'archived']:
+            self.is_published = False
+        elif self.is_published:
+            self.status = 'published'
+        else:
+            self.status = 'draft'
+        super().save(*args, **kwargs)
+
+
+
 class ScheduledWish(models.Model):
     STATUS_CHOICES = [
         ('Scheduled', 'Scheduled'),
@@ -512,6 +577,12 @@ class GreetingCard(models.Model):
         ('dark', 'Dark'),
         ('gradient', 'Gradient'),
         ('glass', 'Glass'),
+        ('midnight', 'Midnight Indigo'),
+        ('champagne', 'Champagne Gold'),
+        ('velvet', 'Celebration Velvet'),
+        ('rose', 'Rose Romance'),
+        ('ocean', 'Ocean Azure'),
+        ('emerald', 'Emerald Glow'),
     ]
 
     OCCASION_CHOICES = GreetingCardTemplate.OCCASION_CHOICES

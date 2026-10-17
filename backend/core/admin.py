@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db import models as db_models
 
 from .models import (
-    UserProfile, Contact, Event, GreetingTemplate, ScheduledWish,
+    UserProfile, Contact, Event, GreetingTemplate, WishTemplate, ScheduledWish,
     EmailLog, GeneratedGreeting, AIPrompt, Notification,
     SubscriptionTransaction, AuditLog, GreetingCardTemplate, PasswordResetOTP
 )
@@ -65,6 +65,16 @@ class GreetingTemplateAdmin(admin.ModelAdmin):
     list_display = ('name', 'occasion', 'tone', 'is_favorite', 'user')
     list_filter = ('occasion', 'tone', 'is_favorite')
     search_fields = ('name', 'content')
+
+
+# ─── Wish Template ────────────────────────────────────────────────────────────
+@admin.register(WishTemplate)
+class WishTemplateAdmin(admin.ModelAdmin):
+    list_display = ('name', 'occasion', 'tone', 'language', 'status', 'is_published', 'created_by', 'created_at')
+    list_filter = ('occasion', 'tone', 'language', 'status', 'is_published', 'created_at')
+    search_fields = ('name', 'message')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-created_at',)
 
 
 # ─── Scheduled Wish ───────────────────────────────────────────────────────────
