@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Plus, Search, Heart, Edit2, Copy, Trash2, Calendar, Download } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Search, Heart, Edit2, Copy, Trash2, Calendar, Download, Send, X, Mail } from 'lucide-react';
 import { cardsAPI } from '../../services/greetingCardsAPI';
+import { useData } from '../../context/DataContext';
 import toast from 'react-hot-toast';
 
 export default function MyGreetingCards() {
@@ -10,6 +11,11 @@ export default function MyGreetingCards() {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [cardToSend, setCardToSend] = useState(null);
+  const [sendContactId, setSendContactId] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const { contacts = [], refetchGreetingAnalytics, fetchNotifications } = useData();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -88,7 +94,7 @@ export default function MyGreetingCards() {
     } catch {
       toast.dismiss(toastId);
       toast('Opening editor to export card...', { icon: 'ℹ️' });
-      navigate(`/greeting-cards/create/${card.id}`);
+      navigate(`/greeting-cards/edit/${card.id}`);
     }
   };
 
@@ -103,6 +109,48 @@ export default function MyGreetingCards() {
     }
   };
 
+  const handleOpenSendModal = (card) => {
+    setCardToSend(card);
+    // Auto-select contact if card already has a contact_id or matching recipient
+    if (card.contact) {
+      setSendContactId(String(card.contact));
+    } else if (card.recipient_name && contacts.length > 0) {
+      const match = contacts.find(c => c.name?.toLowerCase() === card.recipient_name.toLowerCase());
+      setSendContactId(match ? String(match.id) : (contacts[0] ? String(contacts[0].id) : ''));
+    } else if (contacts.length > 0) {
+      setSendContactId(String(contacts[0].id));
+    } else {
+      setSendContactId('');
+    }
+  };
+
+  const handleSendCardSubmit = async () => {
+    if (!cardToSend || !sendContactId) {
+      toast.error('Please select a recipient contact.');
+      return;
+    }
+    const targetContact = contacts.find(c => String(c.id) === String(sendContactId));
+    if (!targetContact?.email) {
+      toast.error('Selected contact has no email address.');
+      return;
+    }
+
+    setSending(true);
+    try {
+      await cardsAPI.sendCard(cardToSend.id, sendContactId);
+      toast.success(`🎉 Greeting card sent to ${targetContact.name}!`);
+      setCardToSend(null);
+      if (refetchGreetingAnalytics) refetchGreetingAnalytics();
+      if (fetchNotifications) fetchNotifications();
+      fetchCards();
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.response?.data?.detail || 'Failed to send card.';
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
   const filtered = cards.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -113,7 +161,7 @@ export default function MyGreetingCards() {
           <h1 className="text-2xl font-bold tracking-tight text-fg flex items-center gap-2">
             My Greeting Cards
           </h1>
-          <p className="text-xs text-slate-400">View and manage your created templates and custom cards</p>
+          <p className="text-xs text-slate-400">View, edit, and instantly send your personalized cards</p>
         </div>
         <button
           onClick={() => navigate('/greeting-cards/create')}
@@ -165,9 +213,20 @@ export default function MyGreetingCards() {
               {/* Preview image */}
               <div className="relative aspect-square bg-inset flex items-center justify-center overflow-hidden border-b border-line-soft">
                 {card.preview_image_url ? (
-                  <img src={card.preview_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300" />
+                  <img
+                    src={card.preview_image_url}
+                    alt={card.title}
+                    className="w-full h-full object-contain p-1.5 transition-all duration-300"
+                    onError={(e) => {
+                      // If the preview URL has a temporary issue, fetch afresh
+                      console.warn('Card image load issue:', card.id);
+                    }}
+                  />
                 ) : (
-                  <div className="text-slate-600 text-xs">No Preview</div>
+                  <div className="text-slate-500 text-xs flex flex-col items-center gap-1.5">
+                    <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading preview...</span>
+                  </div>
                 )}
                 {/* Favorite badge */}
                 <button
@@ -189,9 +248,16 @@ export default function MyGreetingCards() {
                 </div>
 
                 {/* Card actions */}
-                <div className="flex justify-end gap-1.5 mt-4 pt-3 border-t border-line-soft/60">
+                <div className="flex justify-end items-center gap-1.5 mt-4 pt-3 border-t border-line-soft/60">
                   <button
-                    onClick={() => navigate(`/greeting-cards/create/${card.id}`)}
+                    onClick={() => handleOpenSendModal(card)}
+                    className="p-1.5 rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-600 transition-all"
+                    title="Send Card by Email"
+                  >
+                    <Send size={13} />
+                  </button>
+                  <button
+                    onClick={() => navigate(`/greeting-cards/edit/${card.id}`)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-fg hover:bg-raised transition-all"
                     title="Edit Card"
                   >
@@ -224,6 +290,122 @@ export default function MyGreetingCards() {
           ))}
         </div>
       )}
+
+      {/* Instant Send Modal */}
+      <AnimatePresence>
+        {cardToSend && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setCardToSend(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.94, y: 14 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.94, y: 14 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+              className="w-full max-w-md bg-surface border border-line rounded-2xl overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-line-soft">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                    <Send size={15} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-fg">Send Greeting Card</h3>
+                    <p className="text-[10px] text-muted">Email card with high-resolution image attachment</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCardToSend(null)}
+                  className="p-1.5 rounded-lg bg-inset hover:bg-raised text-muted hover:text-fg transition-all"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Preview card small */}
+                <div className="flex items-center gap-3 p-3 bg-inset/60 rounded-xl border border-line-soft">
+                  <div className="w-16 h-16 rounded-lg bg-surface overflow-hidden border border-line-soft flex items-center justify-center flex-shrink-0">
+                    {cardToSend.preview_image_url ? (
+                      <img src={cardToSend.preview_image_url} alt="" className="w-full h-full object-contain" />
+                    ) : (
+                      <Mail size={20} className="text-indigo-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-bold text-fg truncate">{cardToSend.title}</h4>
+                    <span className="text-[10px] text-indigo-400 font-semibold">{cardToSend.occasion}</span>
+                    {cardToSend.recipient_name && (
+                      <p className="text-[10px] text-muted truncate">Recipient: {cardToSend.recipient_name}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contact Selection */}
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-muted mb-1.5 block">
+                    Select Recipient Contact *
+                  </label>
+                  <select
+                    value={sendContactId}
+                    onChange={(e) => setSendContactId(e.target.value)}
+                    className="w-full bg-surface text-fg text-xs rounded-xl px-3 py-2.5 border border-line outline-none focus:border-indigo-500 transition-all"
+                  >
+                    <option value="">-- Choose Contact --</option>
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.email ? `(${c.email})` : '(No Email)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Warning if selected contact has no email */}
+                {sendContactId && !contacts.find(c => String(c.id) === String(sendContactId))?.email && (
+                  <p className="text-xs text-rose-400 font-medium">
+                    ⚠️ The selected contact has no email address. Please update contact details or choose another contact.
+                  </p>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCardToSend(null)}
+                    className="flex-1 py-2 bg-inset hover:bg-raised text-muted hover:text-fg text-xs font-semibold rounded-xl border border-line-soft transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendCardSubmit}
+                    disabled={sending || !sendContactId || !contacts.find(c => String(c.id) === String(sendContactId))?.email}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    {sending ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={13} />
+                        <span>Send Email</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

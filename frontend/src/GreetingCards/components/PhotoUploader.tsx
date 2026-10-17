@@ -5,6 +5,8 @@ import ImagePreview from './ImagePreview';
 import CropToolbar from './CropToolbar';
 import { CropShape } from '../types';
 
+import { cardsAPI } from '../../services/greetingCardsAPI';
+
 interface PhotoUploaderProps {
   photoUrl?: string;
   onUpload: (url: string) => void;
@@ -15,9 +17,21 @@ const PhotoUploader = ({ photoUrl, onUpload, onRemove }: PhotoUploaderProps) => 
   const [shape, setShape] = useState<CropShape>('round');
   const [reCropSrc, setReCropSrc] = useState<string | null>(null);
 
-  const handleCropped = (res: CroppedResult) => {
-    // Store the cropped object URL as the recipient photo
+  const handleCropped = async (res: CroppedResult) => {
+    // Immediate preview
     onUpload(res.url);
+
+    // Upload to server for persistent storage
+    try {
+      const file = new File([res.blob], res.fileName || 'photo.jpg', { type: res.blob.type || 'image/jpeg' });
+      const uploadRes = await cardsAPI.uploadImage(file);
+      const serverUrl = uploadRes.data.url || uploadRes.data.image_url || uploadRes.data.path;
+      if (serverUrl) {
+        onUpload(serverUrl);
+      }
+    } catch (err) {
+      console.warn('Server photo upload failed, using local preview', err);
+    }
   };
 
   const triggerReCrop = () => {

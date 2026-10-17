@@ -2,6 +2,7 @@ import React, { useState, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Heart, Sparkles, Eye, ArrowRight, ImageOff, Star } from 'lucide-react';
 import { CardTemplate } from '../types';
+import TemplatePreview from './TemplatePreview';
 
 interface TemplateCardProps {
   template: CardTemplate;
@@ -9,43 +10,6 @@ interface TemplateCardProps {
   onPreview: (tpl: CardTemplate) => void;
   onToggleFavorite: (id: number) => void;
   isFavorite?: boolean;
-}
-
-// Deterministic gradient from template id for beautiful no-thumbnail fallback
-const FALLBACK_GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
-];
-
-const OCCASION_EMOJIS: Record<string, string> = {
-  birthday: '🎂',
-  anniversary: '💍',
-  wedding: '💐',
-  christmas: '🎄',
-  diwali: '🪔',
-  graduation: '🎓',
-  valentine: '❤️',
-  festival: '✨',
-  corporate: '💼',
-  default: '🌟',
-};
-
-function getOccasionEmoji(occasion: string) {
-  const lower = occasion?.toLowerCase() || '';
-  for (const [key, emoji] of Object.entries(OCCASION_EMOJIS)) {
-    if (lower.includes(key)) return emoji;
-  }
-  return OCCASION_EMOJIS.default;
-}
-
-function getFallbackGradient(id: number) {
-  return FALLBACK_GRADIENTS[id % FALLBACK_GRADIENTS.length];
 }
 
 const TemplateCard = memo(function TemplateCard({
@@ -58,26 +22,11 @@ const TemplateCard = memo(function TemplateCard({
   const [imgError, setImgError] = useState(false);
   const [imgLoading, setImgLoading] = useState(true);
 
-  const fallbackGradient = getFallbackGradient(template.id);
-  const occasionEmoji = getOccasionEmoji(template.occasion);
-
-  // Resolve the actual background style for the card's color preview
-  const cardBgStyle: React.CSSProperties = {};
-  if (template.background_color) {
-    if (
-      template.background_color.startsWith('linear-gradient') ||
-      template.background_color.startsWith('radial-gradient')
-    ) {
-      cardBgStyle.background = template.background_color;
-    } else {
-      cardBgStyle.backgroundColor = template.background_color;
-    }
-  } else {
-    cardBgStyle.background = fallbackGradient;
-  }
-
-  const showThumbnail = !!(template.preview_image_url || template.thumbnail_image_url) && !imgError;
   const thumbnailSrc = template.preview_image_url || template.thumbnail_image_url || undefined;
+  const isPlaceholder = !thumbnailSrc ||
+    thumbnailSrc.includes('greeting_templates/defaults') ||
+    thumbnailSrc.includes('greeting_templates\\defaults');
+  const showThumbnail = Boolean(thumbnailSrc && !imgError && !isPlaceholder);
 
   return (
     <motion.div
@@ -98,7 +47,7 @@ const TemplateCard = memo(function TemplateCard({
           <div className="absolute inset-0 bg-gradient-to-r from-surface via-raised-hover to-surface animate-pulse" />
         )}
 
-        {/* Actual thumbnail image */}
+        {/* Actual uploaded thumbnail image */}
         {showThumbnail && (
           <img
             src={thumbnailSrc}
@@ -112,31 +61,15 @@ const TemplateCard = memo(function TemplateCard({
           />
         )}
 
-        {/* Fallback: beautiful gradient card preview when no thumbnail */}
+        {/* Rich live vector preview with occasion decorations & typography */}
         {(!showThumbnail || imgError) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-4" style={cardBgStyle}>
-            {/* Decorative overlay pattern */}
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)',
-                backgroundSize: '16px 16px',
-              }}
+          <div className="absolute inset-0">
+            <TemplatePreview
+              template={template}
+              showLabel={false}
+              rounded="rounded-none"
+              aspect="h-full w-full"
             />
-            {/* Decorative rings */}
-            <div className="absolute top-4 right-4 w-16 h-16 rounded-full border border-white/10" />
-            <div className="absolute bottom-4 left-4 w-10 h-10 rounded-full border border-white/10" />
-
-            {/* Content */}
-            <div className="relative z-10 flex flex-col items-center text-center">
-              <span className="text-4xl mb-2">{occasionEmoji}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">
-                {template.occasion}
-              </span>
-              <span className="text-white text-xs font-semibold text-center line-clamp-2 px-2 shadow-sm">
-                {template.title}
-              </span>
-            </div>
           </div>
         )}
 

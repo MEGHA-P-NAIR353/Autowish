@@ -201,6 +201,17 @@ export const adminAPI = {
   updateUser: (id, data) => api.patch(`admin/users/${id}/`, data),
   toggleUserStatus: (id) => api.post(`admin/users/${id}/toggle_status/`),
   deleteUser: (id) => api.delete(`admin/users/${id}/`),
+  // Template Management (replaces legacy Prompt management)
+  getTemplates: (params = {}) => api.get('admin/templates/', { params }),
+  getTemplate: (id) => api.get(`admin/templates/${id}/`),
+  createTemplate: (data) => api.post('admin/templates/', data),
+  updateTemplate: (id, data) => api.patch(`admin/templates/${id}/`, data),
+  deleteTemplate: (id) => api.delete(`admin/templates/${id}/`),
+  publishTemplate: (id) => api.post(`admin/templates/${id}/publish/`),
+  unpublishTemplate: (id) => api.post(`admin/templates/${id}/unpublish/`),
+  togglePublishTemplate: (id) => api.post(`admin/templates/${id}/toggle_publish/`),
+  getTemplateStats: () => api.get('admin/templates/stats/'),
+  // Legacy Prompt endpoints (kept for backward compatibility)
   getPrompts: (params = {}) => api.get('admin/prompts/', { params }),
   createPrompt: (data) => api.post('admin/prompts/', data),
   updatePrompt: (id, data) => api.patch(`admin/prompts/${id}/`, data),

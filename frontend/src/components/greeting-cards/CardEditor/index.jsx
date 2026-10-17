@@ -310,6 +310,10 @@ export default function CardEditor({ cardId: propCardId }) {
     fd.append('border_radius', state.borderRadius);
     fd.append('shadow', state.shadow);
     fd.append('elements_json', JSON.stringify(state.elements));
+    const textElement = state.elements.find(e => e.type === 'text');
+    const msg = textElement?.content || state.message || '';
+    fd.append('personal_message', msg);
+    fd.append('message', msg);
     fd.append('status', status);
     return fd;
   }, [state]);
@@ -339,12 +343,29 @@ export default function CardEditor({ cardId: propCardId }) {
         await cardsAPI.update(dbCardIdRef.current, fd);
       }
 
-      // Save preview
+      // Save authoritative preview snapshot
       if (canvasRef.current) {
-        const html2canvas = (await import('html2canvas')).default;
-        const canvas = await html2canvas(canvasRef.current, { useCORS: true, scale: 1 });
-        const base64 = canvas.toDataURL('image/png');
-        await cardsAPI.savePreview(dbCardIdRef.current, base64);
+        try {
+          if (typeof document !== 'undefined' && document.fonts) {
+            await document.fonts.ready;
+          }
+          const html2canvas = (await import('html2canvas')).default;
+          const size = CARD_SIZES[state.cardSize] || CARD_SIZES.instagram_square;
+          const cardW = Number(state.cardWidth || size.w);
+          const cardH = Number(state.cardHeight || size.h);
+          const canvas = await html2canvas(canvasRef.current, {
+            useCORS: true,
+            scale: 2,
+            width: cardW,
+            height: cardH,
+            backgroundColor: null,
+            logging: false,
+          });
+          const base64 = canvas.toDataURL('image/png');
+          await cardsAPI.savePreview(dbCardIdRef.current, base64);
+        } catch (previewErr) {
+          console.warn('Card preview generation failed:', previewErr);
+        }
       }
 
       // Send card
@@ -376,8 +397,21 @@ export default function CardEditor({ cardId: propCardId }) {
       // Save preview snapshot
       if (canvasRef.current) {
         try {
+          if (typeof document !== 'undefined' && document.fonts) {
+            await document.fonts.ready;
+          }
           const html2canvas = (await import('html2canvas')).default;
-          const canvas = await html2canvas(canvasRef.current, { useCORS: true, scale: 1 });
+          const size = CARD_SIZES[state.cardSize] || CARD_SIZES.instagram_square;
+          const cardW = Number(state.cardWidth || size.w);
+          const cardH = Number(state.cardHeight || size.h);
+          const canvas = await html2canvas(canvasRef.current, {
+            useCORS: true,
+            scale: 2,
+            width: cardW,
+            height: cardH,
+            backgroundColor: null,
+            logging: false,
+          });
           const base64 = canvas.toDataURL('image/png');
           await cardsAPI.savePreview(dbCardIdRef.current, base64);
         } catch { /* preview save is non-critical */ }

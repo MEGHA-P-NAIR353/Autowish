@@ -1,4 +1,5 @@
 import { CardTemplate, GreetingCardData, ElementJSON } from '../types';
+import { getDefaultDecor, getDefaultHeading } from '../components/DecorLayer';
 
 /**
  * Safely parse JSON template data that might already be parsed or a string.
@@ -46,10 +47,36 @@ export function normalizeTemplateForEditor(
     }
   }
 
+  const occasion = template.occasion || currentCardData?.occasion || 'Birthday';
+  const metadata = (typeof template.metadata === 'object' && template.metadata) ? template.metadata : {};
+
+  // Extract heading from elements if not explicit
+  let explicitHeading = template.heading || currentCardData?.heading || '';
+  if (!explicitHeading) {
+    const titleEl = parsedElements.find((e: any) => e.id === 'el_title' || e.id === 'el_heading');
+    if (titleEl && titleEl.content) {
+      explicitHeading = titleEl.content;
+    }
+  }
+  if (!explicitHeading) {
+    explicitHeading = getDefaultHeading(occasion);
+  }
+
+  const decor = template.decor || currentCardData?.decor || metadata.decor || getDefaultDecor(occasion);
+  const accentColor = template.accent_color || currentCardData?.accent_color || template.primary_color || '#818cf8';
+
   return {
     id: typeof template.id === 'number' ? template.id : undefined,
     title: template.title || currentCardData?.title || 'My Custom Greeting Card',
-    occasion: template.occasion || currentCardData?.occasion || 'Birthday',
+    occasion,
+    heading: explicitHeading,
+    subtitle: template.subtitle || currentCardData?.subtitle || '',
+    footer: template.footer || currentCardData?.footer || '',
+    signature: template.signature || currentCardData?.signature || '',
+    decor,
+    accent_color: accentColor,
+    primary_color: template.primary_color || currentCardData?.primary_color || '',
+    secondary_color: template.secondary_color || currentCardData?.secondary_color || '',
     recipient_name: template.recipient_name || currentCardData?.recipient_name || '',
     card_size: template.card_size || currentCardData?.card_size || 'instagram_square',
     card_theme: template.card_theme || currentCardData?.card_theme || 'dark',

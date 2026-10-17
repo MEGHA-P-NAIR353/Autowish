@@ -47,6 +47,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminRoles from './pages/AdminRoles';
 import AdminPrompts from './pages/AdminPrompts';
+import AdminTemplates from './pages/AdminTemplates';
 import AdminLogs from './pages/AdminLogs';
 
 // Fallbacks
@@ -280,10 +281,17 @@ function AppRoutes() {
           </DashboardLayout>
         </AdminRoute>
       } />
+      <Route path="/admin/templates" element={
+        <AdminRoute>
+          <DashboardLayout>
+            <AdminTemplates />
+          </DashboardLayout>
+        </AdminRoute>
+      } />
       <Route path="/admin/prompts" element={
         <AdminRoute>
           <DashboardLayout>
-            <AdminPrompts />
+            <AdminTemplates />
           </DashboardLayout>
         </AdminRoute>
       } />
@@ -311,6 +319,20 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/greeting-cards/create/:id" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateGreetingCard />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/greeting-cards/edit/:cardId" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateGreetingCard />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/greeting-cards/edit/:id" element={
         <ProtectedRoute>
           <DashboardLayout>
             <CreateGreetingCard />

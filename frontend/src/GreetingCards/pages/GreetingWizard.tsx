@@ -8,6 +8,7 @@ import {
 import Stepper from '../components/Stepper';
 import CustomizationPanel from '../components/CustomizationPanel';
 import LivePreview from '../components/LivePreview';
+import GreetingCardRenderer from '../components/GreetingCardRenderer';
 import BottomToolbar from '../components/BottomToolbar';
 import TemplateGrid from '../components/TemplateGrid';
 import TemplatePreview from '../components/TemplatePreview';
@@ -15,6 +16,8 @@ import { cardsAPI, cardTemplatesAPI } from '../../services/greetingCardsAPI';
 import { GreetingCardData, CardTemplate } from '../types';
 import { useData } from '../../context/DataContext';
 import { AutoFitResult } from '../utils/textMeasurement';
+import { exportAuthoritativeGreetingCard } from '../utils/cardExporter';
+import { getDefaultDecor, getDefaultHeading } from '../components/DecorLayer';
 import toast from 'react-hot-toast';
 
 const STEPS = ['Select Occasion', 'Choose Template', 'Customize Card', 'Send & Download'];
@@ -35,10 +38,12 @@ const OCCASIONS = [
 ];
 
 export default function GreetingWizard() {
-  const { id } = useParams();
+  const { id, cardId } = useParams();
+  const activeCardId = cardId || id;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
+  const authoritativeCardRef = useRef<HTMLDivElement>(null);
   const { contacts, refetchGreetingAnalytics, fetchNotifications } = useData();
   // Prevent double-fetch on React StrictMode double-mount
   const templateInitialized = useRef(false);
@@ -46,6 +51,8 @@ export default function GreetingWizard() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isCardLoading, setIsCardLoading] = useState(Boolean(activeCardId));
+  const [cardLoadError, setCardLoadError] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<CardTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
@@ -66,6 +73,9 @@ export default function GreetingWizard() {
     card_height: 500,
     background_color: '#0F172A',
     personal_message: '',
+    heading: 'Happy Birthday!',
+    decor: 'sparkle',
+    accent_color: '#818cf8',
     elements_json: [],
     status: 'draft',
     font_family: 'Inter',
@@ -73,46 +83,125 @@ export default function GreetingWizard() {
     text_color: '#FFFFFF',
   });
 
-  // ─── Load existing USER CARD when editing via route param (:id) ──────────────
+  // ─── Load existing USER CARD when editing via route param (:cardId or :id) ──
   useEffect(() => {
-    if (id) {
-      cardsAPI.get(id).then((res) => {
+    if (!activeCardId) {
+      setIsCardLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsCardLoading(true);
+    setCardLoadError(null);
+
+    cardsAPI.get(activeCardId)
+      .then((res) => {
+        if (!isMounted) return;
         const data = res.data;
+        if (!data) throw new Error('No card data returned');
+
         // Safely parse elements_json which may be a JSON string or already an array
         let elements = data.elements_json;
         if (typeof elements === 'string') {
           try { elements = JSON.parse(elements); } catch { elements = []; }
         }
+
+        const textStyle = (typeof data.text_style === 'object' && data.text_style) ? data.text_style : {};
+        const emojiVal = data.emoji || textStyle.emoji || '';
+        const stickerVal = data.sticker || textStyle.sticker || '';
+        const fontColorVal = data.text_color || data.font_color || '#FFFFFF';
+        const photoVal = data.recipient_photo || data.uploaded_photo_url || data.uploaded_photo || '';
+        const bgImgVal = data.background_image_url || data.background_image || '';
+        const bgGradVal = data.background_gradient || textStyle.background_gradient || '';
+        const bgPatternVal = data.background_pattern || textStyle.background_pattern || '';
+        const decorVal = data.decor || textStyle.decor || getDefaultDecor(data.occasion);
+        const headingVal = data.heading || textStyle.heading || getDefaultHeading(data.occasion);
+        const subtitleVal = data.subtitle || textStyle.subtitle || '';
+        const signatureVal = data.signature || textStyle.signature || '';
+        const footerVal = data.footer || textStyle.footer || '';
+        const accentColorVal = data.accent_color || textStyle.accent_color || '';
+
         setCardData({
           id: data.id,
-          title: data.title,
+          title: data.title || 'My Custom Greeting Card',
           occasion: data.occasion || '',
+          heading: headingVal,
+          subtitle: subtitleVal,
+          signature: signatureVal,
+          footer: footerVal,
+          decor: decorVal,
+          accent_color: accentColorVal,
           recipient_name: data.recipient_name || '',
           card_size: data.card_size || 'instagram_square',
           card_theme: data.card_theme || 'dark',
           card_width: data.card_width || 500,
           card_height: data.card_height || 500,
           background_color: data.background_color || '#0F172A',
-          background_image: data.background_image || '',
-          background_pattern: data.background_pattern || '',
-          background_gradient: data.background_gradient || '',
-          personal_message: data.personal_message || '',
-          recipient_photo: data.recipient_photo || '',
-          emoji: data.emoji || '',
-          sticker: data.sticker || '',
+          background_image: bgImgVal,
+          background_pattern: bgPatternVal,
+          background_gradient: bgGradVal,
+          personal_message: data.personal_message || data.message || '',
+          recipient_photo: photoVal,
+          emoji: emojiVal,
+          sticker: stickerVal,
           font_family: data.font_family || 'Inter',
           font_size: data.font_size || 18,
-          text_color: data.text_color || '#FFFFFF',
+          text_color: fontColorVal,
           elements_json: Array.isArray(elements) ? elements : [],
           status: data.status || 'draft',
+          selectedContactId: data.contact || null,
         });
+
+        if (data.template) {
+          setSelectedTemplateId(data.template);
+        }
+
+        // Contact mapping
+        if (data.contact_info) {
+          setSelectedContact(data.contact_info);
+        } else if (data.contact && contacts && contacts.length > 0) {
+          const match = contacts.find((c: any) => c.id === data.contact);
+          if (match) setSelectedContact(match);
+          else setSelectedContact({ id: data.contact, name: data.recipient_name });
+        } else if (data.recipient_name) {
+          setSelectedContact({ id: data.contact || null, name: data.recipient_name });
+        }
+
         setStep(3); // Start directly at customize step if card exists
-      }).catch((error) => {
-        console.error('Failed to load greeting card for editing', error, { cardId: id });
-        toast.error('Could not load card. Please try again.');
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.error('Failed to load greeting card for editing', error, { cardId: activeCardId });
+        const status = error?.response?.status;
+        if (status === 404) {
+          setCardLoadError('This greeting card could not be found.');
+        } else if (status === 403) {
+          setCardLoadError('You do not have permission to edit this card.');
+        } else {
+          setCardLoadError('Unable to load the greeting card. Please try again.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsCardLoading(false);
       });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeCardId]);
+
+  // Sync selected contact if contacts list loads asynchronously
+  useEffect(() => {
+    if (cardData.id && contacts && contacts.length > 0) {
+      if (!selectedContact?.email && cardData.recipient_name) {
+        const match = contacts.find((c: any) =>
+          (cardData.selectedContactId && c.id === cardData.selectedContactId) ||
+          (c.name && c.name.toLowerCase() === cardData.recipient_name.toLowerCase())
+        );
+        if (match) setSelectedContact(match);
+      }
     }
-  }, [id]);
+  }, [contacts, cardData.id, cardData.recipient_name, cardData.selectedContactId]);
 
   // ─── Load TEMPLATE when navigating from Templates page (?template=<id>) ──────
   useEffect(() => {
@@ -134,12 +223,26 @@ export default function GreetingWizard() {
           try { elements = JSON.parse(elements as unknown as string); } catch { elements = []; }
         }
         setSelectedTemplateId(tpl.id);
+        const tplMeta = (typeof tpl.metadata === 'object' && tpl.metadata) ? tpl.metadata : {};
+        const tplDecor = (tplMeta.decor as string) || getDefaultDecor(tpl.occasion);
+        let tplHeading = '';
+        if (Array.isArray(elements)) {
+          const titleEl = elements.find((e: any) => e.id === 'el_title' || e.id === 'el_heading');
+          if (titleEl && titleEl.content) tplHeading = titleEl.content;
+        }
+        if (!tplHeading) tplHeading = getDefaultHeading(tpl.occasion);
+
         setCardData((prev) => ({
           ...prev,
           title: prev.title === 'My Custom Greeting Card'
             ? `${tpl.title} Card`
             : prev.title,
+          heading: tplHeading,
           occasion: tpl.occasion || prev.occasion,
+          decor: tplDecor,
+          accent_color: tpl.accent_color || tpl.primary_color || '',
+          primary_color: tpl.primary_color || '',
+          secondary_color: tpl.secondary_color || '',
           card_size: 'instagram_square',
           card_theme: 'dark',
           card_width: tpl.card_width || prev.card_width,
@@ -186,17 +289,46 @@ export default function GreetingWizard() {
   };
 
   const handleSelectOccasion = (occName: string) => {
-    setCardData((prev) => ({ ...prev, occasion: occName }));
+    setCardData((prev) => ({
+      ...prev,
+      occasion: occName,
+      heading: getDefaultHeading(occName),
+      decor: getDefaultDecor(occName),
+    }));
     setStep(2);
   };
 
   const handleSelectTemplate = (tpl: CardTemplate) => {
     setSelectedTemplateId(tpl.id);
+
+    const tplMeta = (typeof tpl.metadata === 'object' && tpl.metadata) ? tpl.metadata : {};
+    const tplDecor = (tplMeta.decor as string) || getDefaultDecor(tpl.occasion);
+    let elements = tpl.elements_json;
+    if (typeof elements === 'string') {
+      try { elements = JSON.parse(elements as unknown as string); } catch { elements = []; }
+    }
+
+    let tplHeading = '';
+    let templateMsg = '';
+    if (Array.isArray(elements)) {
+      const titleEl = elements.find((e: any) => e.id === 'el_title' || e.id === 'el_heading');
+      if (titleEl && titleEl.content) tplHeading = titleEl.content;
+      const msgEl = elements.find((e: any) => e.type === 'text' && (e.id === 'el_message' || (e.content && e.content.length > 15)));
+      if (msgEl) templateMsg = msgEl.content;
+    }
+    if (!tplHeading) tplHeading = getDefaultHeading(tpl.occasion);
+
     setCardData((prev) => ({
       ...prev,
       background_color: tpl.background_color,
       background_image: tpl.background_image_url || '',
-      elements_json: tpl.elements_json || [],
+      elements_json: Array.isArray(elements) ? elements : [],
+      heading: tplHeading,
+      decor: tplDecor,
+      accent_color: tpl.accent_color || tpl.primary_color || '',
+      primary_color: tpl.primary_color || '',
+      secondary_color: tpl.secondary_color || '',
+      personal_message: prev.personal_message || templateMsg,
       font_family: tpl.font_family || prev.font_family,
       font_size: tpl.font_size || prev.font_size,
       text_color: tpl.text_color || prev.text_color,
@@ -211,31 +343,61 @@ export default function GreetingWizard() {
       return;
     }
 
+    if (status === 'published' && !selectedContact?.id) {
+      toast.error('Please select a recipient contact before sending.');
+      setStep(3);
+      return;
+    }
+
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append('title', cardData.title);
       if (cardData.occasion) fd.append('occasion', cardData.occasion);
-      fd.append('recipient_name', cardData.recipient_name);
-      fd.append('card_size', cardData.card_size);
-      fd.append('card_theme', cardData.card_theme);
-      fd.append('card_width', String(cardData.card_width));
-      fd.append('card_height', String(cardData.card_height));
-      fd.append('background_color', cardData.background_color);
-      if (cardData.background_image) fd.append('background_image_url', cardData.background_image);
+      fd.append('recipient_name', cardData.recipient_name || '');
+      fd.append('card_size', cardData.card_size || 'instagram_square');
+      fd.append('card_theme', cardData.card_theme || 'dark');
+      fd.append('card_width', String(cardData.card_width || 500));
+      fd.append('card_height', String(cardData.card_height || 500));
+      fd.append('background_color', cardData.background_color || '#0F172A');
+      if (cardData.background_image) {
+        fd.append('background_image', cardData.background_image);
+        fd.append('background_image_url', cardData.background_image);
+      }
+      if (cardData.background_gradient) fd.append('background_gradient', cardData.background_gradient);
+      if (cardData.background_pattern) fd.append('background_pattern', cardData.background_pattern);
       fd.append('personal_message', cardData.personal_message || '');
-      if (cardData.recipient_photo) fd.append('recipient_photo', cardData.recipient_photo);
+      fd.append('message', cardData.personal_message || '');
+      if (cardData.recipient_photo) {
+        fd.append('recipient_photo', cardData.recipient_photo);
+        fd.append('uploaded_photo', cardData.recipient_photo);
+      }
       if (cardData.emoji) fd.append('emoji', cardData.emoji);
       if (cardData.sticker) fd.append('sticker', cardData.sticker);
       fd.append('font_family', cardData.font_family || 'Inter');
-      fd.append('font_size', String(cardData.font_size));
+      fd.append('font_size', String(cardData.font_size || 18));
+      fd.append('font_color', cardData.text_color || '#FFFFFF');
       fd.append('text_color', cardData.text_color || '#FFFFFF');
+      if (cardData.heading) fd.append('heading', cardData.heading);
+      if (cardData.subtitle) fd.append('subtitle', cardData.subtitle);
+      if (cardData.signature) fd.append('signature', cardData.signature);
+      if (cardData.footer) fd.append('footer', cardData.footer);
+      if (cardData.decor) fd.append('decor', cardData.decor);
+      if (cardData.accent_color) fd.append('accent_color', cardData.accent_color);
       fd.append('elements_json', JSON.stringify(cardData.elements_json || []));
       fd.append('status', status);
 
+      if (selectedContact?.id) {
+        fd.append('contact', String(selectedContact.id));
+      }
+      if (selectedTemplateId) {
+        fd.append('template', String(selectedTemplateId));
+      }
+
       let res;
-      if (cardData.id) {
-        res = await cardsAPI.update(cardData.id, fd);
+      const targetId = cardData.id || activeCardId;
+      if (targetId) {
+        res = await cardsAPI.update(targetId, fd);
       } else {
         res = await cardsAPI.create(fd);
       }
@@ -243,34 +405,21 @@ export default function GreetingWizard() {
       const savedCardId = res.data.id;
       setCardData((prev) => ({ ...prev, id: savedCardId }));
 
-      // Save preview snapshot using html2canvas
-      if (cardRef.current) {
+      // Save authoritative preview snapshot at exact design dimensions (e.g. 500x500 at 2x = 1000x1000)
+      const exportTarget = authoritativeCardRef.current || cardRef.current;
+      if (exportTarget) {
         try {
-          if (typeof document !== 'undefined' && document.fonts) {
-            await document.fonts.ready;
-          }
-          const html2canvas = (await import('html2canvas')).default;
-          const canvas = await html2canvas(cardRef.current, {
-            useCORS: true,
-            scale: 1.5,
-            backgroundColor: null,
-            logging: false,
-          });
-          const base64 = canvas.toDataURL('image/png');
-          await cardsAPI.savePreview(savedCardId, base64);
+          const exportResult = await exportAuthoritativeGreetingCard(exportTarget, { ...cardData, id: savedCardId }, { scale: 2 });
+          await cardsAPI.savePreview(savedCardId, exportResult.base64);
         } catch (previewErr) {
-          // Log but do not block sending — preview attachment is optional.
           console.warn('Greeting card preview generation failed:', previewErr);
         }
       }
-
-      toast.success(status === 'published' ? 'Wishes sent & published!' : 'Draft saved successfully');
 
       // If publishing, send the card to the selected contact via the backend send endpoint
       if (status === 'published' && selectedContact?.id) {
         try {
           await cardsAPI.sendCard(savedCardId, selectedContact.id);
-          // Refresh dashboard analytics and notifications without a page reload
           if (refetchGreetingAnalytics) refetchGreetingAnalytics();
           if (fetchNotifications) fetchNotifications();
           toast.success('🎉 Greeting card sent to ' + selectedContact.name + '!');
@@ -281,13 +430,19 @@ export default function GreetingWizard() {
           console.error('Greeting card send failed:', (sendErr as { response?: { data?: unknown } })?.response?.data || sendErr);
           toast.error(msg);
         }
+      } else {
+        toast.success(targetId ? 'Greeting card updated successfully' : 'Draft saved successfully');
       }
 
       if (status === 'published') {
         navigate(`/greeting-cards`);
+      } else if (!activeCardId && savedCardId) {
+        navigate(`/greeting-cards/edit/${savedCardId}`, { replace: true });
       }
-    } catch {
-      toast.error('Failed to save card data');
+    } catch (err: any) {
+      console.error('Save error:', err);
+      const errMsg = err?.response?.data?.error || err?.response?.data?.detail || 'Failed to save card data';
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -299,21 +454,13 @@ export default function GreetingWizard() {
       return;
     }
 
-    if (cardRef.current) {
+    const exportTarget = authoritativeCardRef.current || cardRef.current;
+    if (exportTarget) {
       try {
-        if (typeof document !== 'undefined' && document.fonts) {
-          await document.fonts.ready;
-        }
-        const html2canvas = (await import('html2canvas')).default;
-        const canvas = await html2canvas(cardRef.current, {
-          useCORS: true,
-          scale: 2,
-          backgroundColor: null,
-          logging: false,
-        });
+        const exportResult = await exportAuthoritativeGreetingCard(exportTarget, cardData, { scale: 2 });
         const link = document.createElement('a');
         link.download = `${cardData.occasion || 'Greeting'}_Wish.png`;
-        link.href = canvas.toDataURL('image/png');
+        link.href = exportResult.base64;
         link.click();
         toast.success('Downloaded card image!');
       } catch (err) {
@@ -324,11 +471,31 @@ export default function GreetingWizard() {
   };
 
   // ─── Loading / Error gates ────────────────────────────────────────────────────
-  if (isInitializing) {
+  if (isInitializing || isCardLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-inset text-slate-100 gap-4">
         <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-        <p className="text-sm text-muted">Loading template editor…</p>
+        <p className="text-sm text-muted">
+          {isCardLoading ? 'Loading your greeting card…' : 'Loading template editor…'}
+        </p>
+      </div>
+    );
+  }
+
+  if (cardLoadError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-inset text-slate-100 gap-4 p-6">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
+          <X size={28} className="text-red-400" />
+        </div>
+        <h2 className="text-lg font-bold text-fg">Card Unavailable</h2>
+        <p className="text-sm text-muted text-center max-w-sm">{cardLoadError}</p>
+        <button
+          onClick={() => navigate('/greeting-cards')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all"
+        >
+          Back to My Cards
+        </button>
       </div>
     );
   }
@@ -611,9 +778,16 @@ export default function GreetingWizard() {
                 <button
                   onClick={() => handleSave('published')}
                   disabled={!selectedContact?.id || !selectedContact?.email || loading || autoFitResult?.overflow}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-600/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
                 >
-                  Send Card Now
+                  {loading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Sending Card...</span>
+                    </>
+                  ) : (
+                    <span>Send Card Now</span>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -633,6 +807,31 @@ export default function GreetingWizard() {
           isOverflowed={Boolean(autoFitResult?.overflow)}
         />
       )}
+
+      {/* Authoritative Final Export Element: isolated offscreen, always rendered at exact intended design dimensions */}
+      <div
+        style={{
+          position: 'fixed',
+          left: '-9999px',
+          top: 0,
+          width: `${cardData.card_width || 500}px`,
+          height: `${cardData.card_height || 500}px`,
+          overflow: 'hidden',
+          zIndex: -9999,
+          pointerEvents: 'none',
+          visibility: 'visible',
+        }}
+        aria-hidden="true"
+      >
+        <div style={{ width: `${cardData.card_width || 500}px`, height: `${cardData.card_height || 500}px` }}>
+          <GreetingCardRenderer
+            ref={authoritativeCardRef}
+            cardData={cardData}
+            showOverflowWarningBadge={false}
+            isExportMode={true}
+          />
+        </div>
+      </div>
     </div>
   );
 }

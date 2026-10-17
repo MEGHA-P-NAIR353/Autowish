@@ -9,6 +9,7 @@ export default function SavedDrafts() {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [imgErrors, setImgErrors] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -86,11 +87,20 @@ export default function SavedDrafts() {
               className="bg-inset rounded-2xl border border-line-soft overflow-hidden flex flex-col group hover:border-line transition-all"
             >
               {/* Preview */}
-              <div className="relative aspect-square bg-inset flex items-center justify-center border-b border-line-soft overflow-hidden">
-                {card.preview_image_url ? (
-                  <img src={card.preview_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300" />
+              <div className="relative aspect-square bg-surface/50 flex items-center justify-center border-b border-line-soft overflow-hidden">
+                {card.preview_image_url && !imgErrors[card.id] ? (
+                  <img
+                    src={card.preview_image_url}
+                    alt={card.title}
+                    onError={() => setImgErrors(prev => ({ ...prev, [card.id]: true }))}
+                    className="w-full h-full object-contain p-1.5 transition-all duration-300 group-hover:scale-105"
+                  />
                 ) : (
-                  <div className="text-slate-600 text-xs">No Preview</div>
+                  <div className="flex flex-col items-center justify-center p-4 text-center">
+                    <span className="text-3xl mb-1">📝</span>
+                    <span className="text-[11px] text-slate-400 font-medium truncate max-w-[140px]">{card.title}</span>
+                    <span className="text-[9px] text-slate-500 capitalize">{card.occasion}</span>
+                  </div>
                 )}
               </div>
 
@@ -106,7 +116,7 @@ export default function SavedDrafts() {
 
                 <div className="flex gap-2 mt-4 pt-3 border-t border-line-soft/60">
                   <button
-                    onClick={() => navigate(`/greeting-cards/create/${card.id}`)}
+                    onClick={() => navigate(`/greeting-cards/edit/${card.id}`)}
                     className="flex-1 flex items-center justify-center gap-1 py-2 bg-indigo-600 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold transition-all border border-indigo-500/20"
                   >
                     <Edit2 size={12} />

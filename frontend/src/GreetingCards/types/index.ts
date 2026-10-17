@@ -62,13 +62,25 @@ export interface CroppedImage {
   height: number;
 }
 
+export type CardThemeKey =
+  | 'midnight'
+  | 'champagne'
+  | 'velvet'
+  | 'rose'
+  | 'ocean'
+  | 'emerald'
+  | 'dark'
+  | 'light'
+  | 'gradient'
+  | 'glass';
+
 export interface GreetingCardData {
   id?: number;
   title: string;
   occasion?: string;
   recipient_name: string;
   card_size: string;
-  card_theme: string;
+  card_theme: CardThemeKey | string;
   card_width: number;
   card_height: number;
   background_color: string;
@@ -85,6 +97,15 @@ export interface GreetingCardData {
   font_size?: number;
   text_color?: string;
   personal_message?: string;
+  heading?: string;
+  subtitle?: string;
+  footer?: string;
+  signature?: string;
+  decor?: string;
+  accent_color?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  metadata?: Record<string, any>;
   recipient_email?: string;
   selectedContactId?: number | null;
 }

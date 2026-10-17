@@ -2,6 +2,7 @@ import React from 'react';
 import { CARD_SIZES } from './index';
 import ContactSelector from '../../components/ContactSelector';
 import ContactCard from '../../components/ContactCard';
+import { CARD_THEMES } from '../../../GreetingCards/utils/cardThemes';
 
 const FONT_FAMILIES = [
   'Inter', 'Roboto', 'Playfair Display', 'Dancing Script', 'Montserrat',
@@ -130,10 +131,19 @@ export default function RightSidebar({ state, dispatch, selectedElement, contact
             )}
 
             <SectionHeader title="Card Theme" />
-            <div className="grid grid-cols-2 gap-1.5">
-              {['light', 'dark', 'gradient', 'glass'].map(t => (
-                <ToggleBtn key={t} active={state.cardTheme === t} onClick={() => setProp('cardTheme', t)}>
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+            <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+              {CARD_THEMES.map(t => (
+                <ToggleBtn
+                  key={t.key}
+                  active={state.cardTheme === t.key}
+                  onClick={() => {
+                    setProp('cardTheme', t.key);
+                    if (t.bg && (!state.backgroundColor || state.backgroundColor === '#1a1a2e')) {
+                      setProp('backgroundColor', t.bg);
+                    }
+                  }}
+                >
+                  {t.name || (t.key.charAt(0).toUpperCase() + t.slice(1))}
                 </ToggleBtn>
               ))}
             </div>

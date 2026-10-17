@@ -836,3 +836,36 @@ html:not(.dark) .contact-dropdown-panel .contact-row-selected {
   background: linear-gradient(135deg, rgb(var(--accent-from)), rgb(var(--accent-to)));
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
+
+
+/* Smooth scrolling for anchor navigation */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+/* Prevent animation from overriding accessibility preferences */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Keep anchor destinations clear of the sticky navbar */
+section[id] {
+  scroll-margin-top: 5rem;
+}
+
+/* Prevent horizontal overflow from decorative effects */
+body {
+  overflow-x: clip;
+}

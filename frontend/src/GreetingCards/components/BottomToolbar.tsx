@@ -70,12 +70,21 @@ export default function BottomToolbar({
         <button
           type="button"
           onClick={onSend}
-          disabled={isOverflowed}
+          disabled={isOverflowed || isSaving}
           title={isOverflowed ? 'Cannot send: message exceeds card bounds' : undefined}
-          className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all"
+          className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all"
         >
-          <Send size={14} />
-          <span>Publish &amp; Send</span>
+          {isSaving ? (
+            <>
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Sending...</span>
+            </>
+          ) : (
+            <>
+              <Send size={14} />
+              <span>Publish &amp; Send</span>
+            </>
+          )}
         </button>
       </div>
     </div>

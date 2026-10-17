@@ -20,6 +20,11 @@ const GlassModal = ({
   const titleId = useId();
   const descId = useId();
   const previouslyFocused = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -30,14 +35,19 @@ const GlassModal = ({
     const raf = requestAnimationFrame(() => {
       const el = dialogRef.current;
       if (!el) return;
-      const first = el.querySelector('[data-autofocus]') || el.querySelector(FOCUSABLE);
-      (first || el).focus({ preventScroll: true });
+      // If focus is already inside dialog, do not steal or reset it
+      if (el.contains(document.activeElement)) return;
+      const target =
+        el.querySelector('[data-autofocus]') ||
+        el.querySelector('input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])') ||
+        el.querySelector(FOCUSABLE);
+      (target || el).focus({ preventScroll: true });
     });
 
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (e.key !== 'Tab' || !dialogRef.current) return;
@@ -54,9 +64,11 @@ const GlassModal = ({
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = prevOverflow;
-      previouslyFocused.current?.focus?.({ preventScroll: true });
+      if (previouslyFocused.current && typeof previouslyFocused.current.focus === 'function') {
+        previouslyFocused.current.focus({ preventScroll: true });
+      }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (typeof document === 'undefined') return null;
 
@@ -69,7 +81,7 @@ const GlassModal = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
-          onMouseDown={(e) => { if (closeOnOverlay && e.target === e.currentTarget) onClose?.(); }}
+          onMouseDown={(e) => { if (closeOnOverlay && e.target === e.currentTarget) onCloseRef.current?.(); }}
         >
           <motion.div
             ref={dialogRef}

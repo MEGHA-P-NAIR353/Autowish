@@ -114,7 +114,7 @@ const Sidebar = ({ mobile = false, onNavigate }) => {
     { to: '/admin-dashboard', icon: Shield, label: 'Admin Dashboard' },
     { to: '/admin/users', icon: UserCheck, label: 'User Management' },
     { to: '/admin/roles', icon: Shield, label: 'Roles & Perms' },
-    { to: '/admin/prompts', icon: Sparkles, label: 'AI Prompts' },
+    { to: '/admin/templates', icon: BookTemplate, label: 'Template Management' },
     { to: '/admin/logs', icon: Terminal, label: 'Audit Logs' },
   ];
 

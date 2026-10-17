@@ -8,11 +8,13 @@ import {
   Loader2, AlertCircle, CheckCircle2, Timer, Ban, RotateCcw, Sparkles,
   Download, MessageSquare, Zap, Globe, Bell, MoreHorizontal, RefreshCw,
   X, Check, ArrowLeft, CalendarDays, List, BarChart2, TrendingUp, Star,
-  Info, Activity, Inbox
+  Info, Activity, Inbox, Crown
 } from 'lucide-react';
 import { schedulesAPI, aiAPI, contactsAPI } from '../services/api';
 import { cardsAPI } from '../services/greetingCardsAPI';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
+import MinimalCardCreator from '../components/greeting-cards/MinimalCardCreator';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -252,6 +254,32 @@ function DetailDrawer({ wish, onClose, onEdit, onRegenerate }) {
               </div>
             </Section>
 
+            {/* Attached Greeting Card */}
+            {wish.greeting_card_info && (
+              <Section title="Attached Greeting Card" icon={Crown}>
+                <div className="flex items-center gap-4 bg-raised/50 border border-line/50 rounded-xl p-3">
+                  {wish.greeting_card_info.preview_image ? (
+                    <img
+                      src={wish.greeting_card_info.preview_image}
+                      alt={wish.greeting_card_info.title}
+                      className="w-16 h-16 rounded-lg object-cover border border-line-strong flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-lg flex-shrink-0">
+                      🎨
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-fg truncate">{wish.greeting_card_info.title}</h4>
+                    <p className="text-xs text-subtle">{wish.greeting_card_info.occasion}</p>
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-emerald-400 font-medium">
+                      ✓ Included in scheduled delivery
+                    </span>
+                  </div>
+                </div>
+              </Section>
+            )}
+
             {/* Schedule Information */}
             <Section title="Schedule Information" icon={Clock}>
               <div className="grid grid-cols-2 gap-3">
@@ -378,6 +406,14 @@ const DEFAULT_FORM = {
 };
 
 function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
+  const { user } = useAuth();
+  const isPremium = Boolean(
+    user?.is_superuser ||
+    user?.is_staff ||
+    ['PRO', 'BUSINESS', 'ENTERPRISE'].includes(user?.profile?.subscription_plan) ||
+    ['premium', 'admin', 'super_admin'].includes(user?.profile?.role)
+  );
+
   const [form, setForm] = useState(DEFAULT_FORM);
   const [selectedContact, setSelectedContact] = useState(null);
   const [contactSearch, setContactSearch] = useState('');
@@ -391,20 +427,26 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
 
   const [userCards, setUserCards] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(false);
+  const [isCreatingCard, setIsCreatingCard] = useState(false);
+  const [previewCard, setPreviewCard] = useState(null);
 
   useEffect(() => {
-    // Load greeting cards when modal opens
-    setCardsLoading(true);
-    cardsAPI.getAll({ status: 'published' })
-      .then(res => {
-        setUserCards(res.data.results || res.data);
-      })
-      .catch(() => {})
-      .finally(() => setCardsLoading(false));
-  }, []);
+    // Load greeting cards when modal opens if user is entitled
+    if (isPremium) {
+      setCardsLoading(true);
+      cardsAPI.getAll({ status: 'published' })
+        .then(res => {
+          const cardsList = res.data.results || res.data || [];
+          setUserCards(cardsList);
+        })
+        .catch(() => {})
+        .finally(() => setCardsLoading(false));
+    }
+  }, [isPremium]);
 
   useEffect(() => {
     if (wish) {
+      const cardId = wish.greeting_card || wish.greeting_card_info?.id || '';
       setForm({
         contact: wish.contact?.id || '',
         date: wish.date || '',
@@ -420,7 +462,7 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
         notification_type: wish.notification_type || 'Email',
         is_ai_generated: wish.is_ai_generated ?? true,
         status: isDuplicate ? 'Pending' : (wish.status || 'Pending'),
-        greeting_card: wish.greeting_card || '',
+        greeting_card: cardId,
       });
       if (wish.contact) {
         setSelectedContact(wish.contact);
@@ -561,6 +603,9 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
     }
     onClose();
   };
+
+  const selectedCard = userCards.find(c => String(c.id) === String(form.greeting_card)) ||
+    (wish?.greeting_card_info && String(wish.greeting_card_info.id) === String(form.greeting_card) ? wish.greeting_card_info : null);
 
   return (
     <AnimatePresence>
@@ -719,24 +764,159 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
                 placeholder={`Happy ${form.occasion} — auto-generated if blank`} className="input w-full" />
             </div>
 
-            {/* Greeting Card Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">Attached Greeting Card</label>
-              <select
-                value={form.greeting_card}
-                onChange={e => handleFormChange('greeting_card', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">No Greeting Card Attached</option>
-                {userCards.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.title} ({c.occasion})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-subtle mt-1">
-                Attach one of your published greeting cards. It will be sent as an email attachment & embedded inline.
-              </p>
+            {/* Greeting Card Attachment Section */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-muted uppercase tracking-wide">
+                    Attached Greeting Card
+                  </label>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Crown size={10} /> PRO
+                  </span>
+                </div>
+                {isPremium && !isCreatingCard && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingCard(true)}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 transition"
+                  >
+                    <Plus size={13} /> Create Minimal Card
+                  </button>
+                )}
+              </div>
+
+              {!isPremium ? (
+                /* Free User Upgrade Banner */
+                <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-surface to-indigo-500/10 p-4 sm:p-5 shadow-lg">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1.5 max-w-md">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                          <Crown size={16} />
+                        </span>
+                        <h4 className="text-sm font-bold text-fg">
+                          Elevate Your Wishes with Premium Greeting Cards
+                        </h4>
+                      </div>
+                      <p className="text-xs text-subtle leading-relaxed">
+                        Upgrade to <strong className="text-amber-400 font-semibold">AutoWish Pro</strong> to attach custom designed greeting cards. Cards are rendered inline in the email body & included as downloadable high-res attachments.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[11px] text-muted">
+                        <span>✨ Inline HTML card embedding</span>
+                        <span>🎨 6+ bespoke themes</span>
+                        <span>📬 Auto-delivered with wish</span>
+                      </div>
+                    </div>
+                    <Link
+                      to="/subscription"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 transition-all shadow-md shadow-amber-500/20 flex-shrink-0"
+                    >
+                      <Sparkles size={14} /> Upgrade to Pro
+                    </Link>
+                  </div>
+                </div>
+              ) : isCreatingCard ? (
+                /* Integrated Minimal Card Creator */
+                <MinimalCardCreator
+                  initialRecipient={selectedContact?.name || ''}
+                  initialOccasion={form.occasion}
+                  initialMessage={form.message}
+                  scheduleMessage={form.message}
+                  contactId={selectedContact?.id || null}
+                  onCardCreated={(newCard) => {
+                    setUserCards(prev => [newCard, ...prev.filter(c => c.id !== newCard.id)]);
+                    handleFormChange('greeting_card', newCard.id);
+                    setIsCreatingCard(false);
+                  }}
+                  onCancel={() => setIsCreatingCard(false)}
+                />
+              ) : (
+                /* Premium Card Selection & Preview */
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <select
+                      value={form.greeting_card}
+                      onChange={e => handleFormChange('greeting_card', e.target.value)}
+                      className="input flex-1 text-xs py-2.5"
+                    >
+                      <option value="">No Greeting Card Attached</option>
+                      {userCards.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.title} ({c.occasion})
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingCard(true)}
+                      className="btn-secondary text-xs flex items-center justify-center gap-1.5 py-2.5 px-3 flex-shrink-0 whitespace-nowrap"
+                    >
+                      <Plus size={14} /> Create Card
+                    </button>
+                  </div>
+
+                  {cardsLoading && (
+                    <div className="flex items-center gap-2 text-xs text-subtle">
+                      <Loader2 size={12} className="animate-spin" /> Loading your greeting cards...
+                    </div>
+                  )}
+
+                  {selectedCard && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-raised border border-line-strong">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {selectedCard.preview_image ? (
+                          <img
+                            src={selectedCard.preview_image}
+                            alt={selectedCard.title}
+                            className="w-12 h-12 rounded-lg object-cover border border-line-strong flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xs flex-shrink-0">
+                            🎨
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-fg truncate">
+                            {selectedCard.title}
+                          </p>
+                          <p className="text-[11px] text-subtle flex items-center gap-2">
+                            <span>{selectedCard.occasion}</span>
+                            <span>•</span>
+                            <span className="text-emerald-400 font-medium">Published</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {selectedCard.preview_image && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewCard(selectedCard)}
+                            className="p-1.5 rounded-lg text-subtle hover:text-fg hover:bg-raised-hover transition"
+                            title="Preview card full size"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleFormChange('greeting_card', '')}
+                          className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                          title="Remove card attachment"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-subtle">
+                    Attached cards are delivered inline and as high-res PNG downloads when your wish is sent via email.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Message Mode Toggle */}
@@ -790,6 +970,56 @@ function ScheduleEditorModal({ wish, contacts, onClose, onSave }) {
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Card Preview Lightbox Modal */}
+      {previewCard && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] glass-overlay flex items-center justify-center p-4"
+          onClick={() => setPreviewCard(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={e => e.stopPropagation()}
+            className="bg-surface border border-line rounded-2xl p-5 max-w-lg w-full shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-line">
+              <div className="flex items-center gap-2">
+                <Crown size={16} className="text-amber-400" />
+                <h4 className="text-sm font-bold text-fg">{previewCard.title}</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewCard(null)}
+                className="p-1 rounded-lg text-subtle hover:text-fg hover:bg-raised-hover transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex justify-center p-3 bg-raised/60 rounded-xl overflow-hidden">
+              <img
+                src={previewCard.preview_image}
+                alt={previewCard.title}
+                className="max-h-[420px] rounded-lg shadow-xl object-contain"
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs text-subtle pt-1">
+              <span>Occasion: <strong className="text-fg">{previewCard.occasion}</strong></span>
+              <button
+                type="button"
+                onClick={() => setPreviewCard(null)}
+                className="btn-secondary text-xs px-3 py-1.5"
+              >
+                Close Preview
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }
@@ -835,6 +1065,11 @@ function ScheduleCard({ wish, onView, onEdit, onDuplicate, onCancel, onResume, o
                 {wish.is_ai_generated && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400">
                     <Sparkles size={9} /> AI
+                  </span>
+                )}
+                {(wish.greeting_card || wish.greeting_card_info) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium">
+                    🎨 Card
                   </span>
                 )}
               </div>

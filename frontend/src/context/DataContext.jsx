@@ -238,31 +238,20 @@ export const DataProvider = ({ children }) => {
 
   // ── Templates CRUD ────────────────────────────────────────────────────────
   const addTemplate = async (template) => {
-    try {
-      const resp = await templatesAPI.create(template);
-      const newTemplate = resp.data;
-      setTemplates((prev) => [newTemplate, ...prev]);
-      return newTemplate;
-    } catch {
-      const newTemplate = { ...template, id: Date.now() };
-      setTemplates((prev) => [newTemplate, ...prev]);
-      return newTemplate;
-    }
+    const resp = await templatesAPI.create(template);
+    const newTemplate = resp.data;
+    setTemplates((prev) => [newTemplate, ...prev]);
+    return newTemplate;
   };
 
   const updateTemplate = async (id, updated) => {
-    try {
-      const resp = await templatesAPI.update(id, updated);
-      setTemplates((prev) => prev.map((t) => (t.id === id ? resp.data : t)));
-    } catch {
-      setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, ...updated } : t)));
-    }
+    const resp = await templatesAPI.update(id, updated);
+    setTemplates((prev) => prev.map((t) => (t.id === id ? resp.data : t)));
+    return resp.data;
   };
 
   const deleteTemplate = async (id) => {
-    try {
-      await templatesAPI.delete(id);
-    } catch { /* silently proceed */ }
+    await templatesAPI.delete(id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 

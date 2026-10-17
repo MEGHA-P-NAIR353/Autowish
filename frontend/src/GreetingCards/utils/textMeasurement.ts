@@ -75,7 +75,8 @@ export function measureTextHeight(options: MeasureTextOptions): number {
 
   const container = getMeasurementContainer();
   const paddingX = options.paddingX || 0;
-  const effectiveWidth = Math.max(1, options.width - paddingX * 2);
+  // Subtract 4px safety buffer so slight font rendering width discrepancies never cause an unexpected wrap
+  const effectiveWidth = Math.max(1, options.width - paddingX * 2 - 4);
   const family = options.fontFamily ? `'${options.fontFamily}', ${UNICODE_FONT_FALLBACKS}` : UNICODE_FONT_FALLBACKS;
   const lineHeightVal = typeof options.lineHeight === 'number' ? `${options.lineHeight}` : (options.lineHeight || '1.65');
 
@@ -130,6 +131,8 @@ export function findOptimalFontSizeBinarySearch(options: AutoFitOptions): AutoFi
 
   const minSize = Math.max(8, minFontSize);
   const maxSize = Math.max(minSize, maxFontSize);
+  // Enforce a 6px safe ceiling so real-world font rasterization & line heights never spill out of bounds
+  const safeTargetHeight = Math.max(35, targetHeight - 6);
 
   // 1. Check if it fits at maxFontSize
   const heightAtMax = measureTextHeight({
@@ -143,7 +146,7 @@ export function findOptimalFontSizeBinarySearch(options: AutoFitOptions): AutoFi
     paddingX,
   });
 
-  if (heightAtMax <= targetHeight) {
+  if (heightAtMax <= safeTargetHeight) {
     return {
       fittedFontSize: maxSize,
       fits: true,
@@ -170,7 +173,7 @@ export function findOptimalFontSizeBinarySearch(options: AutoFitOptions): AutoFi
       paddingX,
     });
 
-    if (measuredHeight <= targetHeight) {
+    if (measuredHeight <= safeTargetHeight) {
       bestFit = mid;
       foundFittingSize = true;
       // Try searching for larger sizes that might still fit
