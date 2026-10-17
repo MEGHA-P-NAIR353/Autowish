@@ -1594,6 +1594,18 @@ class AdminWishTemplateViewSet(viewsets.ModelViewSet):
             
         return qs
 
+    def create(self, request, *args, **kwargs):
+        with transaction.atomic():
+            return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        with transaction.atomic():
+            return super().destroy(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         template = serializer.save(created_by=self.request.user)
         create_activity(

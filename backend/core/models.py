@@ -123,6 +123,8 @@ class WishTemplate(models.Model):
         ('Anniversary', 'Anniversary'),
         ('Festival', 'Festival'),
         ('Holiday', 'Holiday'),
+        ('Heartfelt', 'Heartfelt'),
+        ('Wedding', 'Wedding'),
         ('Custom', 'Custom'),
     ]
 
@@ -134,6 +136,7 @@ class WishTemplate(models.Model):
         ('Formal', 'Formal'),
         ('Heartfelt', 'Heartfelt'),
         ('Inspiring', 'Inspiring'),
+        ('Warm', 'Warm'),
     ]
 
     STATUS_CHOICES = [

@@ -112,6 +112,13 @@ class AdminWishTemplateSerializer(serializers.ModelSerializer):
             'created_by_name', 'favorites_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'created_by_name', 'favorites_count', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'name': {
+                'error_messages': {
+                    'unique': 'A template with this name already exists. Please choose a unique name.',
+                }
+            }
+        }
 
     def to_internal_value(self, data):
         if hasattr(data, 'copy'):
@@ -160,6 +167,14 @@ class AdminWishTemplateSerializer(serializers.ModelSerializer):
             if v.lower() == value.strip().lower():
                 return v
         return value.strip()
+
+    def validate_language(self, value):
+        stripped = (value or 'en').strip().lower()
+        if not stripped:
+            return 'en'
+        if len(stripped) > 10:
+            raise serializers.ValidationError("Language code cannot exceed 10 characters.")
+        return stripped
 
     def validate_status(self, value):
         val = value.strip().lower()

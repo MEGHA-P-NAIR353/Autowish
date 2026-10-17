@@ -63,6 +63,106 @@ class WishTemplateTests(TestCase):
         # Verify saved in database
         self.assertTrue(WishTemplate.objects.filter(name="Joyful Birthday Celebration").exists())
 
+    def test_admin_can_create_draft_wish_template(self):
+        """Verify an administrator can create a template saved as draft."""
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            "name": "Secret Draft Celebration",
+            "occasion": "Anniversary",
+            "tone": "Romantic",
+            "language": "en",
+            "status": "draft",
+            "message": "Draft anniversary message for {{name}}.",
+        }
+        response = self.client.post('/api/admin/templates/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], "Secret Draft Celebration")
+        self.assertEqual(response.data['status'], "draft")
+        self.assertFalse(response.data['is_published'])
+
+        # Verify saved in database as draft
+        tpl = WishTemplate.objects.get(name="Secret Draft Celebration")
+        self.assertEqual(tpl.status, "draft")
+        self.assertFalse(tpl.is_published)
+
+    def test_admin_publish_draft_makes_it_visible_to_users(self):
+        """Verify publishing a draft template makes it immediately accessible to regular users."""
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            "name": "Gradual Rollout Greeting",
+            "occasion": "Festival",
+            "tone": "Warm",
+            "language": "en",
+            "status": "draft",
+            "message": "Season greetings for {{name}}!",
+        }
+        create_res = self.client.post('/api/admin/templates/', payload, format='json')
+        self.assertEqual(create_res.status_code, status.HTTP_201_CREATED)
+        tpl_id = create_res.data['id']
+
+        # Regular user queries user-facing templates: should NOT be visible
+        self.client.force_authenticate(user=self.regular_user)
+        user_res_1 = self.client.get('/api/templates/')
+        names_1 = [t['name'] for t in user_res_1.data.get('results', user_res_1.data)]
+        self.assertNotIn("Gradual Rollout Greeting", names_1)
+
+        # Admin publishes the draft
+        self.client.force_authenticate(user=self.admin_user)
+        pub_res = self.client.post(f'/api/admin/templates/{tpl_id}/publish/')
+        self.assertEqual(pub_res.status_code, status.HTTP_200_OK)
+
+        # Regular user queries templates again: should NOW be visible immediately
+        self.client.force_authenticate(user=self.regular_user)
+        user_res_2 = self.client.get('/api/templates/')
+        names_2 = [t['name'] for t in user_res_2.data.get('results', user_res_2.data)]
+        self.assertIn("Gradual Rollout Greeting", names_2)
+
+    def test_admin_can_create_heartfelt_and_wedding_templates(self):
+        """Verify templates with Heartfelt and Wedding occasions and Warm tone are accepted."""
+        self.client.force_authenticate(user=self.admin_user)
+        payload_heartfelt = {
+            "name": "Heartfelt Consolation and Love",
+            "occasion": "Heartfelt",
+            "tone": "Warm",
+            "language": "en",
+            "status": "published",
+            "message": "Thinking of you always, {{name}}. Sending love.",
+        }
+        res_h = self.client.post('/api/admin/templates/', payload_heartfelt, format='json')
+        self.assertEqual(res_h.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_h.data['occasion'], "Heartfelt")
+        self.assertEqual(res_h.data['tone'], "Warm")
+
+        payload_wedding = {
+            "name": "Wedding Day Happiness",
+            "occasion": "Wedding",
+            "tone": "Heartfelt",
+            "language": "en",
+            "status": "published",
+            "message": "Congratulations on your special day {{name}}! Wishing you lifelong joy.",
+        }
+        res_w = self.client.post('/api/admin/templates/', payload_wedding, format='json')
+        self.assertEqual(res_w.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_w.data['occasion'], "Wedding")
+
+    def test_duplicate_template_name_validation(self):
+        """Verify that attempting to create a template with an existing name returns 400 error."""
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            "name": "Unique Name Test",
+            "occasion": "Birthday",
+            "tone": "Friendly",
+            "status": "published",
+            "message": "Happy birthday {{name}}!",
+        }
+        res1 = self.client.post('/api/admin/templates/', payload, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Duplicate submission
+        res2 = self.client.post('/api/admin/templates/', payload, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('name', res2.data)
+
     def test_admin_can_edit_wish_template(self):
         """Verify an administrator can edit an existing template."""
         template = WishTemplate.objects.create(
